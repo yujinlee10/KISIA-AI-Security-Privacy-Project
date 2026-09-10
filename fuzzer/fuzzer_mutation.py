@@ -71,6 +71,7 @@ def attackseed_generator():
 
 
 
+
 def llm_request(attack_prompt):
     """
     input : attack_prompt
@@ -78,30 +79,29 @@ def llm_request(attack_prompt):
 
     LLM API에 공격 프롬프트를 전송하고 응답을 받아옵니다.
     """
-
     with open(SEED_PROMPT_FILE, "r", encoding="utf-8") as f:
         seed_prompt = f.read().strip()
 
-    url = f"{API_BASE.rstrip('/')}/chat/completions"
+    url = f"{API_BASE.rstrip('/')}/v1/messages"
 
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json"
     }
 
     payload = {
         "model": MODEL,
+        "max_tokens": 512,
+
+        "system": seed_prompt,
+
         "messages": [
-            {
-                "role": "system",
-                "content": seed_prompt
-            },
             {
                 "role": "user",
                 "content": attack_prompt
             }
-        ],
-        "temperature": 0.7
+        ]
     }
 
     response = requests.post(
@@ -111,11 +111,14 @@ def llm_request(attack_prompt):
         timeout=60
     )
 
+    print("STATUS:", response.status_code)
+    print("RAW RESPONSE:", response.text)
+
     response.raise_for_status()
 
     result = response.json()
 
-    return result["choices"][0]["message"]["content"]
+    return result["content"][0]["text"]
 
 #for prompt in attack_prompts:
 #    print(prompt)
