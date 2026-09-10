@@ -78,6 +78,7 @@ def llm_request(attack_prompt):
     output : LLM의 응답 결과
 
     LLM API에 공격 프롬프트를 전송하고 응답을 받아옵니다.
+    claude-code api 규격을 기준으로 작성 되었습니다.
     """
     with open(SEED_PROMPT_FILE, "r", encoding="utf-8") as f:
         seed_prompt = f.read().strip()
