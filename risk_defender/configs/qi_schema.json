@@ -1,0 +1,39 @@
+{
+  "person_id": {
+    "source": "author",
+    "use": "internal_id",
+    "is_qi": false
+  },
+  "username": {
+    "source": "username or profile.username",
+    "use": "direct_identifier",
+    "is_qi": false
+  },
+  "age": {
+    "source": "profile.age",
+    "use": "derived_qi",
+    "priority": 1,
+    "normalization": "integer age to decade band, e.g. 24 -> 20s"
+  },
+  "location": {
+    "source": "profile.city_country",
+    "use": "qi",
+    "priority": 2,
+    "generalization": "City, Country -> Country"
+  },
+  "occupation": {
+    "source": "profile.occupation",
+    "use": "qi",
+    "priority": 3
+  },
+  "education": {
+    "source": "profile.education_categorized or profile.education",
+    "use": "derived_qi",
+    "priority": 4
+  },
+  "relationship_status": {
+    "source": "profile.relationship_status",
+    "use": "qi",
+    "priority": 5
+  }
+}
