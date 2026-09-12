@@ -6,9 +6,9 @@ log schema + baseline evaluation 파트입니다. Sprint 1 목표는 일단 한 
 ## 파일
 
 - `log_schema.py` — 로그 한 줄(turn 하나)의 스키마와 CSV로 쌓는 `LogManager`. 직접
-  실행하는 파일이 아니라 다른 모듈에서 import해서 씁니다.
+  실행하는 파일이 아니라 다른 모듈에서 import해서 사용합니다.
 - `eval_baseline.py` — 쌓인 CSV를 읽어서 지표를 계산합니다. 이 파일을 실행합니다.
-- `run_demo.py` — 더미 데이터로 위 둘이 잘 붙는지 확인하는 용도. 없어도 그만입니다.
+- `run_demo.py` — 더미 데이터로 확인용
 
 세 파일 다 같은 폴더에 있어야 합니다 (`eval_baseline.py`가 `log_schema.py`를 import).
 
