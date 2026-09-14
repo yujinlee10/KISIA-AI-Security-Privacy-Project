@@ -1,3 +1,6 @@
+# Privacy State와 QI 데이터 구조를 정의하는 파일
+# 현재까지 어떤 QI가 쌓였는지 관리하는 파일
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

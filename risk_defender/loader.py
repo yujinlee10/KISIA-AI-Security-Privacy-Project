@@ -1,3 +1,5 @@
+# SynthPAI 데이터셋을 읽어서 우리 실험에 필요한 QI만 뽑는 파일
+
 from __future__ import annotations
 
 import json

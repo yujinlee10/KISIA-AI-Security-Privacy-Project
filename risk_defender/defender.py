@@ -1,3 +1,5 @@
+# 위험한 QI가 들어왔을 때 방어 동작을 수행하는 파일
+
 from __future__ import annotations
 
 from dataclasses import dataclass

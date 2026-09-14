@@ -1,3 +1,5 @@
+# 후보군 k와 재식별 위험도를 계산하는 파일
+
 from __future__ import annotations
 
 from dataclasses import dataclass
