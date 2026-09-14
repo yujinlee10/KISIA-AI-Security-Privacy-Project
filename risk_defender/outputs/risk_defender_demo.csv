@@ -1,6 +1,0 @@
-turn,target_id,candidate_qi,k_before,k_after_raw,risk_gain_raw,risky,defense_action,generalized_qis,suppressed_qis,k_after_defense,risk_after_defense,state_after_defense
-1,pers1,"location=Zurich, Switzerland",300,2,0.496667,True,suppress,[],"['location=Zurich, Switzerland']",300,0.003333,{}
-2,pers1,occupation=software engineer,300,6,0.163333,False,allow,[],[],6,0.166667,{'occupation': 'software engineer'}
-3,pers1,age=30s,6,1,0.833333,True,generalize,"[{'qi_type': 'age', 'from': '30s', 'to': 'adult'}]",[],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult'}"
-4,pers1,education=Master's,6,3,0.166667,True,generalize,"[{'qi_type': 'education', 'from': ""Master's"", 'to': 'higher_education'}]",[],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult', 'education': 'higher_education'}"
-5,pers1,relationship_status=single,6,3,0.166667,True,suppress,[],['relationship_status=single'],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult', 'education': 'higher_education'}"
