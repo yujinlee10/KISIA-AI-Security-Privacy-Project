@@ -101,6 +101,30 @@ python3 -m risk_defender.demo \
   --threshold 5
 ```
 
+## Demo 동작 방식
+
+현재 `demo.py`는 QI를 랜덤으로 선택하지 않는다. 재현 가능한 v0.1 검증을 위해 기본 target과 QI 입력 순서를 고정해서 실행한다.
+
+`--target-id`를 지정하지 않으면 SynthPAI population에서 첫 번째 persona인 `pers1`을 기본 target으로 사용한다. 이후 해당 target profile에서 5개 QI를 가져와 아래 순서대로 하나씩 Privacy State에 넣어본다.
+
+```python
+DEMO_QI_ORDER = [
+    "location",
+    "occupation",
+    "age",
+    "education",
+    "relationship_status",
+]
+```
+
+따라서 같은 데이터셋, 같은 target, 같은 threshold로 실행하면 CSV 결과도 동일하게 나온다. 다른 target에 대해 확인하고 싶으면 `--target-id`를 지정하면 된다.
+
+```bash
+python3 -m risk_defender.demo --target-id pers2 --threshold 5
+```
+
+현재 demo는 랜덤 공격 시뮬레이션이 아니라, 하나의 target에 대해 QI가 순서대로 누적될 때 `k`, risk gain, Defender 동작을 확인하는 재현 가능한 데모이다.
+
 ## 다음에 할 것
 
 v0.1에서 맡은 State / k / Defender 핵심 모듈은 구현했다. SynthPAI profile 300명을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제하도록 했다.
