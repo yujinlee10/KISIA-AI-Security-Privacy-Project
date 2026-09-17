@@ -1,15 +1,8 @@
 from pathlib import Path
 
-
-
-
 # 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
 ATTACK_SEED_FILE = BASE_DIR / "attackseed.txt"
-
-
-
-
 
 def attackseed_generator():
     """
@@ -44,7 +37,3 @@ def attackseed_generator():
     print("공격 프롬프트 1차 mutation 생성 완료.")
 
     return attack_prompts
-
-
-
-

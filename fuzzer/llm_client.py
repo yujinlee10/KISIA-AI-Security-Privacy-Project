@@ -1,17 +1,12 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-import json
 import requests
 
 BASE_DIR = Path(__file__).resolve().parent
 
 ENV_FILE = BASE_DIR / ".env"
 SEED_PROMPT_FILE = BASE_DIR / "seedprompt.txt"
-
-RESULT_DIR = BASE_DIR / "results"
-RESULT_FILE = RESULT_DIR / "mutation_results.jsonl"
-
 
 load_dotenv(ENV_FILE)
 
@@ -20,7 +15,7 @@ API_KEY = os.getenv("LLM_API_KEY")
 API_BASE = os.getenv("LLM_API_BASE")
 MODEL = os.getenv("LLM_MODEL")
 
-
+print("------")
 print("API BASE:", API_BASE)
 print("MODEL:", MODEL)
 
@@ -73,9 +68,6 @@ def llm_request(attack_prompt):
         json=payload,
         timeout=60
     )
-
-    print("STATUS:", response.status_code)
-    print("RAW RESPONSE:", response.text)
 
     response.raise_for_status()
 
