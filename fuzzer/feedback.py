@@ -28,27 +28,61 @@ class FuzzerFeedback:
     accepted: bool
 
 
-def evaluate_feedback(k_before: int, k_after: int, risk_gain: float) -> FuzzerFeedback:
+def evaluate_feedback(
+    k_before: int, 
+    k_after: int, 
+    risk_gain: float,
+    threshold: int = 5
+    ) -> FuzzerFeedback:
     """
     input : k_before, k_after, risk_gain
     output : FuzzerFeedback
 
     k값 변화와 risk_gain을 바탕으로 Fuzzer Feedback을 생성합니다.
-    Strategy 선택 / Mutation / LLM 호출은 이 단계에서 다루지 않습니다.
     """
-    reduction_ratio = (k_before - k_after) / k_before if k_before > 0 else 0.0
+    # 잘못된 입력
+    if k_before <= 0 or k_after < 0:
+        return FuzzerFeedback(
+            k_before=k_before,
+            k_after=k_after,
+            reduction_ratio=0.0,
+            risk_gain=risk_gain,
+            status="invalid",
+            score=-1.0,
+            accepted=False,
+        )
 
-    if k_after <= 1:
-        status = "critical"
-    elif reduction_ratio >= 0.5:
-        status = "success"
-    elif reduction_ratio > 0:
-        status = "partial"
+    reduction_ratio = (k_before - k_after) / k_before
+
+    # 후보가 0명인 경우
+    if k_after == 0:
+        status = "invalid"
+        score = -1.0
+        accepted = False
+
+    # 위험 threshold 도달
+    elif k_after <= threshold:
+        status = "threshold_reached"
+        score = reduction_ratio
+        accepted = True
+
+    # 후보군 감소
+    elif k_after < k_before:
+        status = "improved"
+        score = reduction_ratio
+        accepted = True
+
+    # 변화 없음
+    elif k_after == k_before:
+        status = "unchanged"
+        score = 0.0
+        accepted = False
+
+    # 후보군 증가
     else:
-        status = "failed"
-
-    score = reduction_ratio * 0.7 + risk_gain * 0.3
-    accepted = status != "failed"
+        status = "worse"
+        score = reduction_ratio
+        accepted = False
 
     return FuzzerFeedback(
         k_before=k_before,
