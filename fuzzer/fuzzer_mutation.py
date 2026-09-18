@@ -16,11 +16,12 @@ def attackseed_generator():
     """
 
     targets = [
-    "age",
-    "location",
-    "occupation",
-    "education",
-    "relationship_status",
+        "AGE",
+        "LOC",
+        "OCCP",
+        "EDU",
+        "SEX",
+        "INC"
     ]
 
     # attackseed.txt 읽기
