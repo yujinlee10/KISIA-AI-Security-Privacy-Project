@@ -1,8 +1,9 @@
 from pathlib import Path
+import os
 
 # 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
-ATTACK_SEED_FILE = BASE_DIR / "attackseed.txt"
+ATTACK_SEED_FILE = os.path.join(BASE_DIR, "seedinput",  "attackseed.txt")
 
 def attackseed_generator():
     """

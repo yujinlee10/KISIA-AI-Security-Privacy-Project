@@ -6,7 +6,8 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent
 
 ENV_FILE = BASE_DIR / ".env"
-SEED_PROMPT_FILE = BASE_DIR / "seedprompt.txt"
+SEED_PROMPT_FILE = os.path.join(BASE_DIR, "seedinput", "seedprompt.txt")
+
 
 load_dotenv(ENV_FILE)
 

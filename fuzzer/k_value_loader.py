@@ -1,7 +1,8 @@
 import csv
+import os
 
-CSV_FILE = "risk_defender_demo.csv"
-
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_FILE = os.path.join(BASE_DIR, "seedinput", "risk_defender_demo.csv")
 
 def load_k_value(turn):
     """
