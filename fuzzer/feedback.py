@@ -38,7 +38,7 @@ def evaluate_feedback(
     input : k_before, k_after, risk_gain
     output : FuzzerFeedback
 
-    k값 변화와 risk_gain을 바탕으로 Fuzzer Feedback을 생성합니다.
+    필요한 k값들을 받아와 이를 prompt에 어떤 피드백을 가할지 판단에 필요한 값들로 가공해 FuzzerFeedback 객체를 반환합니다.
     """
     # 잘못된 입력
     if k_before <= 0 or k_after < 0:
