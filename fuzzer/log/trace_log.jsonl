@@ -1,0 +1,2 @@
+{"turn": 1, "prompt": "PROMPT1 내용", "k_before": 300, "k_after": 80, "strategy": "intensify"}
+{"turn": 2, "prompt": "PROMPT2 내용", "k_before": 80, "k_after": 30, "strategy": "refine"}
