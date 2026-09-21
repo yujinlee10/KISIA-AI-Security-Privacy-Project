@@ -34,7 +34,7 @@ def run_demo():
             suppressed=False,
             utility_score=1.0,
             state_id="S1",
-            threshold=3, model="gpt-4o-mini", config="temp0.0",
+            threshold=3, model="claude-haiku-4.5", config="temp0.0",
             transition_id="T1",
         )
     )
@@ -56,7 +56,7 @@ def run_demo():
             suppressed=False,
             utility_score=1.0,
             state_id="S2",
-            threshold=3, model="gpt-4o-mini", config="temp0.0",
+            threshold=3, model="claude-haiku-4.5", config="temp0.0",
             transition_id="T2",
         )
     )
@@ -79,7 +79,7 @@ def run_demo():
             suppressed=False,
             utility_score=0.9,
             state_id="S2_def",
-            threshold=3, model="gpt-4o-mini", config="temp0.0",
+            threshold=3, model="claude-haiku-4.5", config="temp0.0",
             transition_id="T2_def",
         )
     )
