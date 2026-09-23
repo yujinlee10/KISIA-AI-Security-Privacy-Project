@@ -194,6 +194,8 @@ python3 -m risk_defender.demo --target-id pers2 --threshold 5
 
 실험 상세 결과: `risk_defender/outputs/threshold_experiment_summary.csv`
 
-## 다음에 할 것
+## 지금까지 한 것
 
 State / k / Defender 핵심 모듈 구현 완료. SynthPAI profile 300명(+ 합성 300,000명)을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제한다. 여러 target에 대한 batch 실험 및 threshold 비교완료 -> threshold 3으로 결정
+
+## 다음에 할 것
