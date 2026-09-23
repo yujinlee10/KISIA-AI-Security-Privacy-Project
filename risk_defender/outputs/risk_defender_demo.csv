@@ -1,6 +1,6 @@
 turn,target_id,candidate_qi,k_before,k_after_raw,risk_gain_raw,risky,defense_action,generalized_qis,suppressed_qis,k_after_defense,risk_after_defense,state_after_defense
-1,pers1,"location=Zurich, Switzerland",300,2,0.496667,True,suppress,[],"['location=Zurich, Switzerland']",300,0.003333,{}
-2,pers1,occupation=software engineer,300,6,0.163333,False,allow,[],[],6,0.166667,{'occupation': 'software engineer'}
-3,pers1,age=30s,6,1,0.833333,True,generalize,"[{'qi_type': 'age', 'from': '30s', 'to': 'adult'}]",[],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult'}"
-4,pers1,education=Master's,6,3,0.166667,True,generalize,"[{'qi_type': 'education', 'from': ""Master's"", 'to': 'higher_education'}]",[],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult', 'education': 'higher_education'}"
-5,pers1,relationship_status=single,6,3,0.166667,True,suppress,[],['relationship_status=single'],6,0.166667,"{'occupation': 'software engineer', 'age': 'adult', 'education': 'higher_education'}"
+1,pers1,"LOC=Zurich, Switzerland",300000,2054,0.000484,False,allow,[],[],2054,0.000487,"{'LOC': 'Zurich, Switzerland'}"
+2,pers1,OCCP=software engineer,2054,36,0.027291,False,allow,[],[],36,0.027778,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer'}"
+3,pers1,AGE=30s,36,9,0.083333,False,allow,[],[],9,0.111111,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s'}"
+4,pers1,EDU=Master's,9,3,0.222222,True,generalize,"[{'qi_type': 'EDU', 'from': ""Master's"", 'to': 'higher_education'}]",[],7,0.142857,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s', 'EDU': 'higher_education'}"
+5,pers1,REL=single,7,1,0.857143,True,suppress,[],['REL=single'],7,0.142857,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s', 'EDU': 'higher_education'}"

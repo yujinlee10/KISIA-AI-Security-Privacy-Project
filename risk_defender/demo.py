@@ -57,7 +57,7 @@ def main() -> None:
     parser.add_argument("--data-url", default=DEFAULT_DATA_URL)
     parser.add_argument("--refresh-data", action="store_true")
     parser.add_argument("--target-id", default=None)
-    parser.add_argument("--threshold", type=int, default=5)
+    parser.add_argument("--threshold", type=int, default=3)
     parser.add_argument("--out", default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument(
         "--expanded",

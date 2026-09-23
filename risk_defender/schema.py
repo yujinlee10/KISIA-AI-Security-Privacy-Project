@@ -8,11 +8,11 @@ from typing import Any, Literal
 
 
 DEFAULT_QI_ORDER = [
-    "age",
-    "location",
-    "occupation",
-    "education",
-    "relationship_status",
+    "AGE",
+    "LOC",
+    "OCCP",
+    "EDU",
+    "REL",
 ]
 
 DIRECT_IDENTIFIER_FIELDS = {"author", "username", "person_id"}
@@ -126,7 +126,7 @@ def normalize_qi_value(qi_type: str, value: Any) -> Any:
     if value is None:
         return None
 
-    if qi_type == "age":
+    if qi_type == "AGE":
         return to_age_band(value)
 
     if isinstance(value, str):
@@ -166,13 +166,13 @@ def is_more_specific(qi_type: str, candidate: Any, existing: Any) -> bool:
     if candidate in (None, "") or existing in (None, ""):
         return False
 
-    if qi_type == "location":
+    if qi_type == "LOC":
         return _location_specificity(str(candidate)) > _location_specificity(str(existing))
 
-    if qi_type == "age":
+    if qi_type == "AGE":
         return _age_specificity(candidate) > _age_specificity(existing)
 
-    if qi_type == "education":
+    if qi_type == "EDU":
         return _education_specificity(str(candidate)) > _education_specificity(str(existing))
 
     return False

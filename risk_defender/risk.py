@@ -100,10 +100,10 @@ def _matches_qi(qi_type: str, actual: Any, expected: Any) -> bool:
     if actual_text.casefold() == expected_text.casefold():
         return True
 
-    if qi_type == "location":
+    if qi_type == "LOC":
         return expected_text.casefold() in _location_ancestors(actual_text)
 
-    if qi_type == "age":
+    if qi_type == "AGE":
         if expected_text == "adult":
             return actual_text in {"20s", "30s", "40s", "50s", "60s"}
         if expected_text == "senior":
@@ -111,13 +111,13 @@ def _matches_qi(qi_type: str, actual: Any, expected: Any) -> bool:
         if expected_text == "young":
             return actual_text == "teens"
 
-    if qi_type == "education":
+    if qi_type == "EDU":
         if expected_text == "higher_education":
             return actual_text in {"College Degree", "Master's", "PhD"}
         if expected_text == "non_advanced_degree":
             return actual_text in {"HS Diploma", "In College/HS Diploma"}
 
-    if qi_type == "relationship_status":
+    if qi_type == "REL":
         if expected_text == "partnered":
             return actual_text in {"married", "engaged", "in a relationship"}
         if expected_text == "not_partnered":

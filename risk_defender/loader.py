@@ -19,6 +19,19 @@ class PersonaRecord:
     source_texts: list[str]
 
 
+def load_expanded_population(
+    base_path: str | Path,
+    synth_path: str | Path | None = None,
+) -> list[PersonaRecord]:
+    """원본 + 합성 프로필을 합쳐서 반환. synth_path가 없으면 원본만 반환."""
+    records = load_population(base_path)
+    if synth_path is not None:
+        synth_path = Path(synth_path)
+        if synth_path.exists():
+            records = records + load_population(synth_path)
+    return records
+
+
 def load_population(path: str | Path) -> list[PersonaRecord]:
     path = Path(path)
     if not path.exists():
@@ -97,11 +110,11 @@ def _extract_profile(item: dict[str, Any]) -> dict[str, Any]:
 def _extract_qis(profile: dict[str, Any]) -> dict[str, Any]:
     education = profile.get("education_categorized") or derive_education(profile.get("education"))
     raw_qis = {
-        "age": to_age_band(profile.get("age")),
-        "location": profile.get("city_country"),
-        "occupation": profile.get("occupation"),
-        "education": education,
-        "relationship_status": profile.get("relationship_status"),
+        "AGE": to_age_band(profile.get("age")),
+        "LOC": profile.get("city_country"),
+        "OCCP": profile.get("occupation"),
+        "EDU": education,
+        "REL": profile.get("relationship_status"),
     }
     return {
         qi_type: normalize_qi_value(qi_type, raw_qis.get(qi_type))

@@ -157,13 +157,13 @@ def _find_safe_generalization(
 def generalization_chain(qi: QIObservation) -> list[QIObservation]:
     value = str(qi.value)
 
-    if qi.qi_type == "location":
+    if qi.qi_type == "LOC":
         return [
             QIObservation(qi.qi_type, parent, qi.source_turn, qi.confidence, qi.source)
             for parent in _location_generalizations(value)
         ]
 
-    if qi.qi_type == "age":
+    if qi.qi_type == "AGE":
         if value in {"teens"}:
             return [QIObservation(qi.qi_type, "young", qi.source_turn, qi.confidence, qi.source)]
         if value in {"20s", "30s", "40s", "50s", "60s"}:
@@ -171,13 +171,13 @@ def generalization_chain(qi: QIObservation) -> list[QIObservation]:
         if value in {"70s", "80s", "90s"}:
             return [QIObservation(qi.qi_type, "senior", qi.source_turn, qi.confidence, qi.source)]
 
-    if qi.qi_type == "education":
+    if qi.qi_type == "EDU":
         if value in {"Master's", "PhD", "College Degree"}:
             return [QIObservation(qi.qi_type, "higher_education", qi.source_turn, qi.confidence, qi.source)]
         if value in {"HS Diploma", "In College/HS Diploma"}:
             return [QIObservation(qi.qi_type, "non_advanced_degree", qi.source_turn, qi.confidence, qi.source)]
 
-    if qi.qi_type == "relationship_status":
+    if qi.qi_type == "REL":
         if value in {"married", "engaged", "in a relationship"}:
             return [QIObservation(qi.qi_type, "partnered", qi.source_turn, qi.confidence, qi.source)]
         if value in {"single", "divorced", "widowed"}:
