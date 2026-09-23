@@ -101,6 +101,40 @@ python3 -m risk_defender.demo \
   --threshold 5
 ```
 
+## 확장 Population (300,000개)
+
+원본 300개만으로는 QI 1개만 입력해도 k가 너무 작아 Defender가 과도하게 발동한다. 합성 데이터를 생성해 300,000개로 확장하면 실제 사용 시나리오에 가까운 k 분포를 얻을 수 있다.
+
+**합성 데이터 생성 (최초 1회)**
+
+```bash
+# 프로젝트 루트에서 실행
+python3 scripts/generate_synth_population.py
+```
+
+생성된 파일은 `risk_defender/data/user_bot_profiles_300000.json` (약 70 MB)에 저장된다. seed=42 고정으로 재현 가능하다.
+
+**확장 Population으로 데모 실행**
+
+```bash
+python3 -m risk_defender.demo --expanded --threshold 5
+```
+
+`--expanded` 없이 실행하면 원본 300개 population만 사용한다.
+
+**생성 옵션**
+
+```bash
+python3 scripts/generate_synth_population.py --n 300000 --seed 42
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `--n` | 300000 | 최종 총 프로필 수 (원본 300개 포함) |
+| `--seed` | 42 | 랜덤 시드 (재현 가능성 보장) |
+| `--output` | `data/user_bot_profiles_300000.json` | 출력 경로 |
+| `--source` | `data/user_bot_profiles_300.json` | 원본 경로 |
+
 ## Demo 동작 방식
 
 현재 `demo.py`는 QI를 랜덤으로 선택하지 않는다. 재현 가능한 v0.1 검증을 위해 기본 target과 QI 입력 순서를 고정해서 실행한다.

@@ -14,12 +14,12 @@ from urllib.request import urlretrieve
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from risk_defender.defender import defend_candidate_qis
-    from risk_defender.loader import load_population
+    from risk_defender.loader import load_expanded_population, load_population
     from risk_defender.risk import calculate_k, evaluate_projected_risk
     from risk_defender.schema import PrivacyState, QIObservation
 else:
     from .defender import defend_candidate_qis
-    from .loader import load_population
+    from .loader import load_expanded_population, load_population
     from .risk import calculate_k, evaluate_projected_risk
     from .schema import PrivacyState, QIObservation
 
@@ -29,14 +29,15 @@ DEFAULT_DATA_URL = (
     "data/profiles/user_bot_profiles_300.json"
 )
 DEFAULT_DATA_PATH = Path(__file__).resolve().parent / "data" / "user_bot_profiles_300.json"
+DEFAULT_SYNTH_PATH = Path(__file__).resolve().parent / "data" / "user_bot_profiles_300000.json"
 DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "outputs" / "risk_defender_demo.csv"
 
 DEMO_QI_ORDER = [
-    "location",
-    "occupation",
-    "age",
-    "education",
-    "relationship_status",
+    "LOC",
+    "OCCP",
+    "AGE",
+    "EDU",
+    "REL",
 ]
 
 
@@ -58,13 +59,22 @@ def main() -> None:
     parser.add_argument("--target-id", default=None)
     parser.add_argument("--threshold", type=int, default=5)
     parser.add_argument("--out", default=str(DEFAULT_OUTPUT_PATH))
+    parser.add_argument(
+        "--expanded",
+        action="store_true",
+        help="원본+합성 300,000개 population 사용 (user_bot_profiles_300000.json 필요)",
+    )
     args = parser.parse_args()
 
     data_path = Path(args.data) if args.data else ensure_default_dataset(
         args.data_url,
         refresh=args.refresh_data,
     )
-    population = load_population(data_path)
+
+    if args.expanded:
+        population = load_expanded_population(data_path, synth_path=DEFAULT_SYNTH_PATH)
+    else:
+        population = load_population(data_path)
     if not population:
         raise ValueError("No population records loaded.")
 
