@@ -30,7 +30,7 @@ DEFAULT_DATA_URL = (
 )
 DEFAULT_DATA_PATH = Path(__file__).resolve().parent / "data" / "user_bot_profiles_300.json"
 DEFAULT_SYNTH_PATH = Path(__file__).resolve().parent / "data" / "user_bot_profiles_300000.json"
-DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "outputs" / "risk_defender_demo.csv"
+DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "outputs" / "demo_single_target.csv"
 
 DEMO_QI_ORDER = [
     "LOC",

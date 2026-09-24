@@ -222,8 +222,8 @@ def main() -> None:
     print(f"  평균 committed QI 수: {best['mean_committed_qis']:.2f}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    summary_path = OUT_DIR / "threshold_experiment_summary.csv"
-    detail_path = OUT_DIR / "threshold_experiment_detail.csv"
+    summary_path = OUT_DIR / "poc_01_threshold_sensitivity_summary.csv"
+    detail_path = OUT_DIR / "poc_01_threshold_sensitivity_detail.csv"
 
     summary_fields = [k for k in results[0].keys()]
     with summary_path.open("w", newline="", encoding="utf-8") as f:

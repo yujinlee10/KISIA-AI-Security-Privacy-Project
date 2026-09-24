@@ -1,0 +1,101 @@
+target_id,turn,qi_type,raw_value,c0_k,c0_risk_event,c1_action,c1_defended_value,c1_k,c1_risk_event,sl_action,sl_defended_value,sl_k,sl_risk_event
+pers58370,1,LOC,"Santiago, Chile",4082,False,allow,"Santiago, Chile",4082,False,allow,"Santiago, Chile",4082,False
+pers58370,2,OCCP,high school teacher,44,False,allow,high school teacher,44,False,allow,high school teacher,44,False
+pers58370,3,AGE,40s,12,False,allow,40s,12,False,allow,40s,12,False
+pers58370,4,EDU,College Degree,7,False,allow,College Degree,7,False,allow,College Degree,7,False
+pers58370,5,REL,married,2,True,suppress,,7,False,allow,married,2,True
+pers13113,1,LOC,"Cape Town, South Africa",6032,False,allow,"Cape Town, South Africa",6032,False,allow,"Cape Town, South Africa",6032,False
+pers13113,2,OCCP,accountant,43,False,allow,accountant,43,False,allow,accountant,43,False
+pers13113,3,AGE,60s,1,True,generalize,adult,42,False,allow,60s,1,True
+pers13113,4,EDU,Master's,1,True,allow,Master's,18,False,allow,Master's,1,True
+pers13113,5,REL,divorced,1,True,generalize,not_partnered,10,False,allow,divorced,1,True
+pers144195,1,LOC,"Casablanca, Morocco",1012,False,allow,"Casablanca, Morocco",1012,False,allow,"Casablanca, Morocco",1012,False
+pers144195,2,OCCP,senior engineer,10,False,allow,senior engineer,10,False,allow,senior engineer,10,False
+pers144195,3,AGE,20s,3,True,generalize,adult,10,False,allow,20s,3,True
+pers144195,4,EDU,Master's,1,True,generalize,higher_education,8,False,allow,Master's,1,True
+pers144195,5,REL,divorced,1,True,suppress,,8,False,allow,divorced,1,True
+pers128394,1,LOC,"Lyon, France",1035,False,allow,"Lyon, France",1035,False,allow,"Lyon, France",1035,False
+pers128394,2,OCCP,University lecturer,4,True,suppress,,1035,False,allow,University lecturer,4,True
+pers128394,3,AGE,30s,3,True,allow,30s,289,False,allow,30s,3,True
+pers128394,4,EDU,Master's,2,True,allow,Master's,116,False,allow,Master's,2,True
+pers128394,5,REL,single,2,True,allow,single,22,False,allow,single,2,True
+pers117027,1,LOC,"Stockholm, Sweden",5053,False,allow,"Stockholm, Sweden",5053,False,allow,"Stockholm, Sweden",5053,False
+pers117027,2,OCCP,Business consultant,92,False,allow,Business consultant,92,False,allow,Business consultant,92,False
+pers117027,3,AGE,30s,24,False,allow,30s,24,False,allow,30s,24,False
+pers117027,4,EDU,Master's,7,False,allow,Master's,7,False,allow,Master's,7,False
+pers117027,5,REL,divorced,3,True,suppress,,7,False,allow,divorced,3,True
+pers73159,1,LOC,"Tokyo, Japan",6821,False,allow,"Tokyo, Japan",6821,False,allow,"Tokyo, Japan",6821,False
+pers73159,2,OCCP,Civil engineer,103,False,allow,Civil engineer,103,False,allow,Civil engineer,103,False
+pers73159,3,AGE,50s,21,False,allow,50s,21,False,allow,50s,21,False
+pers73159,4,EDU,College Degree,6,False,allow,College Degree,6,False,allow,College Degree,6,False
+pers73159,5,REL,single,1,True,suppress,,6,False,allow,single,1,True
+pers53737,1,LOC,"Bucharest, Romania",2970,False,allow,"Bucharest, Romania",2970,False,allow,"Bucharest, Romania",2970,False
+pers53737,2,OCCP,part-time research assistant,7,False,allow,part-time research assistant,7,False,allow,part-time research assistant,7,False
+pers53737,3,AGE,20s,4,True,generalize,adult,6,False,allow,20s,4,True
+pers53737,4,EDU,College Degree,3,True,generalize,higher_education,6,False,allow,College Degree,3,True
+pers53737,5,REL,engaged,2,True,suppress,,6,False,allow,engaged,2,True
+pers285930,1,LOC,"Mexico City, Mexico",4005,False,allow,"Mexico City, Mexico",4005,False,allow,"Mexico City, Mexico",4005,False
+pers285930,2,OCCP,psychologist,30,False,allow,psychologist,30,False,allow,psychologist,30,False
+pers285930,3,AGE,30s,10,False,allow,30s,10,False,allow,30s,10,False
+pers285930,4,EDU,Master's,1,True,generalize,higher_education,9,False,allow,Master's,1,True
+pers285930,5,REL,divorced,1,True,suppress,,9,False,allow,divorced,1,True
+pers45581,1,LOC,"Rio de Janeiro, Brazil",6822,False,allow,"Rio de Janeiro, Brazil",6822,False,allow,"Rio de Janeiro, Brazil",6822,False
+pers45581,2,OCCP,history professor,41,False,allow,history professor,41,False,allow,history professor,41,False
+pers45581,3,AGE,40s,10,False,allow,40s,10,False,allow,40s,10,False
+pers45581,4,EDU,Master's,8,False,allow,Master's,8,False,allow,Master's,8,False
+pers45581,5,REL,divorced,3,True,suppress,,8,False,allow,divorced,3,True
+pers221209,1,LOC,"Lima, Peru",2966,False,allow,"Lima, Peru",2966,False,allow,"Lima, Peru",2966,False
+pers221209,2,OCCP,school principal,31,False,allow,school principal,31,False,allow,school principal,31,False
+pers221209,3,AGE,30s,9,False,allow,30s,9,False,allow,30s,9,False
+pers221209,4,EDU,PhD,2,True,generalize,higher_education,9,False,allow,PhD,2,True
+pers221209,5,REL,widowed,1,True,suppress,,9,False,allow,widowed,1,True
+pers16664,1,LOC,"Lisbon, Portugal",5924,False,allow,"Lisbon, Portugal",5924,False,allow,"Lisbon, Portugal",5924,False
+pers16664,2,OCCP,junior software developer,52,False,allow,junior software developer,52,False,allow,junior software developer,52,False
+pers16664,3,AGE,20s,16,False,allow,20s,16,False,allow,20s,16,False
+pers16664,4,EDU,College Degree,6,False,allow,College Degree,6,False,allow,College Degree,6,False
+pers16664,5,REL,married,1,True,suppress,,6,False,allow,married,1,True
+pers15623,1,LOC,"Cape Town, South Africa",6032,False,allow,"Cape Town, South Africa",6032,False,allow,"Cape Town, South Africa",6032,False
+pers15623,2,OCCP,environmental scientist,19,False,allow,environmental scientist,19,False,allow,environmental scientist,19,False
+pers15623,3,AGE,50s,6,False,allow,50s,6,False,allow,50s,6,False
+pers15623,4,EDU,College Degree,2,True,suppress,,6,False,allow,College Degree,2,True
+pers15623,5,REL,widowed,1,True,suppress,,6,False,allow,widowed,1,True
+pers49124,1,LOC,"London, United Kingdom",4938,False,allow,"London, United Kingdom",4938,False,allow,"London, United Kingdom",4938,False
+pers49124,2,OCCP,biology professor,21,False,allow,biology professor,21,False,allow,biology professor,21,False
+pers49124,3,AGE,20s,6,False,allow,20s,6,False,allow,20s,6,False
+pers49124,4,EDU,Master's,1,True,generalize,higher_education,6,False,allow,Master's,1,True
+pers49124,5,REL,married,1,True,suppress,,6,False,allow,married,1,True
+pers114630,1,LOC,"Bergen, Norway",1084,False,allow,"Bergen, Norway",1084,False,allow,"Bergen, Norway",1084,False
+pers114630,2,OCCP,part-time research assistant,2,True,suppress,,1084,False,allow,part-time research assistant,2,True
+pers114630,3,AGE,20s,1,True,allow,20s,268,False,allow,20s,1,True
+pers114630,4,EDU,Master's,1,True,allow,Master's,99,False,allow,Master's,1,True
+pers114630,5,REL,divorced,1,True,allow,divorced,12,False,allow,divorced,1,True
+pers121982,1,LOC,"Nairobi, Kenya",4035,False,allow,"Nairobi, Kenya",4035,False,allow,"Nairobi, Kenya",4035,False
+pers121982,2,OCCP,business development manager,11,False,allow,business development manager,11,False,allow,business development manager,11,False
+pers121982,3,AGE,50s,5,False,generalize,adult,11,False,allow,50s,5,False
+pers121982,4,EDU,Ph.D. in Literature,1,True,suppress,,11,False,allow,Ph.D. in Literature,1,True
+pers121982,5,REL,single,1,True,generalize,not_partnered,6,False,allow,single,1,True
+pers264952,1,LOC,"Istanbul, Turkey",3987,False,allow,"Istanbul, Turkey",3987,False,allow,"Istanbul, Turkey",3987,False
+pers264952,2,OCCP,environmental consultant,84,False,allow,environmental consultant,84,False,allow,environmental consultant,84,False
+pers264952,3,AGE,60s,10,False,allow,60s,10,False,allow,60s,10,False
+pers264952,4,EDU,Master's,3,True,generalize,higher_education,8,False,allow,Master's,3,True
+pers264952,5,REL,married,3,True,suppress,,8,False,allow,married,3,True
+pers13913,1,LOC,"Los Angeles, United States",2942,False,allow,"Los Angeles, United States",2942,False,allow,"Los Angeles, United States",2942,False
+pers13913,2,OCCP,Art teacher,9,False,allow,Art teacher,9,False,allow,Art teacher,9,False
+pers13913,3,AGE,60s,1,True,generalize,adult,9,False,allow,60s,1,True
+pers13913,4,EDU,College Degree,1,True,generalize,higher_education,6,False,allow,College Degree,1,True
+pers13913,5,REL,married,1,True,suppress,,6,False,allow,married,1,True
+pers294255,1,LOC,"Prague, Czech Republic",3017,False,allow,"Prague, Czech Republic",3017,False,allow,"Prague, Czech Republic",3017,False
+pers294255,2,OCCP,college professor,10,False,allow,college professor,10,False,allow,college professor,10,False
+pers294255,3,AGE,50s,2,True,generalize,adult,10,False,allow,50s,2,True
+pers294255,4,EDU,College Degree,2,True,allow,College Degree,6,False,allow,College Degree,2,True
+pers294255,5,REL,in relationship,1,True,suppress,,6,False,allow,in relationship,1,True
+pers104249,1,LOC,"New York, United States",5115,False,allow,"New York, United States",5115,False,allow,"New York, United States",5115,False
+pers104249,2,OCCP,bank manager,20,False,allow,bank manager,20,False,allow,bank manager,20,False
+pers104249,3,AGE,30s,6,False,allow,30s,6,False,allow,30s,6,False
+pers104249,4,EDU,Master's,2,True,generalize,higher_education,6,False,allow,Master's,2,True
+pers104249,5,REL,married,1,True,suppress,,6,False,allow,married,1,True
+pers285707,1,LOC,"Edinburgh, United Kingdom",4082,False,allow,"Edinburgh, United Kingdom",4082,False,allow,"Edinburgh, United Kingdom",4082,False
+pers285707,2,OCCP,archaeologist,25,False,allow,archaeologist,25,False,allow,archaeologist,25,False
+pers285707,3,AGE,60s,2,True,generalize,adult,25,False,allow,60s,2,True
+pers285707,4,EDU,College Degree,1,True,allow,College Degree,12,False,allow,College Degree,1,True
+pers285707,5,REL,single,1,True,generalize,not_partnered,8,False,allow,single,1,True

@@ -107,7 +107,7 @@ python3 demo.py --threshold 5
 python3 -m risk_defender.demo --threshold 5
 ```
 
-실행 결과는 `outputs/risk_defender_demo.csv`에 저장된다. CSV에는 각 turn마다 원본 QI를 그대로 넣었을 때의 `k_after_raw`, Defender 적용 후의 `k_after_defense`, 일반화 또는 억제 결과가 기록된다.
+실행 결과는 `outputs/demo_single_target.csv`에 저장된다. CSV에는 각 turn마다 원본 QI를 그대로 넣었을 때의 `k_after_raw`, Defender 적용 후의 `k_after_defense`, 일반화 또는 억제 결과가 기록된다.
 
 로컬에 이미 받은 SynthPAI 파일을 직접 지정하고 싶으면 다음처럼 실행한다.
 
@@ -192,10 +192,51 @@ python3 -m risk_defender.demo --target-id pers2 --threshold 5
 - min k = 4로 k-anonymity 기준 만족 (k > threshold 항상 보장)
 - threshold를 높일수록 suppress가 늘어 오히려 utility 감소
 
-실험 상세 결과: `risk_defender/outputs/threshold_experiment_summary.csv`
+실험 상세 결과: `risk_defender/outputs/poc_01_threshold_sensitivity_summary.csv`
+
+## 실험 결과 파일 (`outputs/`)
+
+팀원들이 직접 열어볼 수 있는 CSV 파일 4개가 있다.
+
+### `demo_single_target.csv`
+특정 target 1명에 대해 QI가 턴마다 하나씩 추가될 때 어떤 일이 벌어지는지 보여주는 파일이다. k 값이 어떻게 줄어드는지, Defender가 어느 시점에 일반화·억제를 하는지 한 눈에 볼 수 있다.
+
+```bash
+python3 -m risk_defender.demo --threshold 5  # 기본 target
+python3 -m risk_defender.demo --target-id pers2 --threshold 5  # 다른 target
+```
+
+### `poc_01_threshold_sensitivity_summary.csv`
+threshold 값을 여러 개 바꿔가며 실험한 **요약** 결과이다. threshold 후보 7개(`3, 5, 10, 15, 20, 30, 50`)에 대해 allow/generalize/suppress 비율과 최종 k 통계가 threshold 하나당 한 줄로 나온다. **threshold=3으로 결정한 근거 파일**이다.
+
+### `poc_01_threshold_sensitivity_detail.csv`
+위 summary의 원본 데이터이다. 모든 target × threshold × QI 조합에 대해 각 턴별 raw 로그가 들어 있다. summary 숫자가 이상하다 싶을 때 파고드는 용도이다.
+
+```bash
+python3 scripts/threshold_experiment.py --expanded  # 재생성 시
+```
+
+### `poc_02_cumulative_vs_stateless.csv`
+**C0(방어 없음) / C1(누적 State Defender) / Stateless(기억 없는 방어)** 세 조건을 20명 target에 대해 비교한 파일. 각 턴마다 세 조건의 k 값과 위험 사건 발생 여부가 기록돼 있다.
+
+이 파일이 보여주는 핵심: QI 하나하나는 개별로 봤을 때 안전해 보여도, 쌓이면 위험해지는데 Stateless는 이걸 못 잡습는다. 누적 State가 없으면 방어가 거의 의미 없다는 걸 수치로 증명한 파일이다.
+
+| 조건 | 위험 세션 (300k 기준) | 설명 |
+|------|----------------------|------|
+| C0 방어 없음 | 20/20 | 아무것도 안 막음 |
+| **C1 누적 Defender** | **0/20** | 우리 모듈, 완벽 방어 |
+| Stateless Defender | 20/20 | 기억 없는 방어 = 거의 효과 없음 |
+
+```bash
+python3 scripts/poc_defender.py --expanded  # 재생성 시
+```
 
 ## 지금까지 한 것
 
-State / k / Defender 핵심 모듈 구현 완료. SynthPAI profile 300명(+ 합성 300,000명)을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제한다. 여러 target에 대한 batch 실험 및 threshold 비교완료 -> threshold 3으로 결정
+- State / k / Defender 핵심 모듈 구현 완료. 
+- SynthPAI profile 300명(+ 합성 300,000명)을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제한다. 
+- 여러 target에 대한 batch 실험 및 threshold 비교완료 -> threshold 3으로 결정
 
 ## 다음에 할 것
+
+- QI 몇 개 쓸지 정하기 (5-8개)
