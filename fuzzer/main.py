@@ -1,40 +1,73 @@
-from fuzzer_mutation import attackseed_generator
+from fuzzer_mutation import attackseed_generator, generate_next_mutation
 from llm_client import llm_request
+from k_value_loader import load_k_value
+from feedback import evaluate_feedback, select_mutation_strategy
 
 
 def main():
 
+    # Turn 0
+    # 초기 공격 프롬프트 생성
     attack_prompts = attackseed_generator()
 
-    age_prompt = attack_prompts[0]
+    initial_prompt = attack_prompts[0]
 
-    print("Attack Prompt:")
-    print(age_prompt)
+    print("Initial Prompt:")
+    print(initial_prompt)
     print("------")
 
-    response = llm_request(age_prompt)
+    # Mutation LLM을 통해 PROMPT1 생성
+    prompt1 = llm_request(initial_prompt)
 
-    print("LLM Response:")
-    print(response)
+    print("PROMPT1:")
+    print(prompt1)
+    print("------")
 
-    #for prompt in attack_prompts:
-#    print(prompt)
 
-"""
-실행을 위한 코드로 attackseed_generator() 함수를 통해 생성된 공격 프롬프트를 llm_request() 함수에 전달하여 LLM의 응답을 받아오는 예시입니다. 
-다만 테스트용으로는 일단 먼저 하나의 응답만 받아오도록 주석 처리하였습니다.
-"""
-# for seed in attack_seeds:
+    # Turn 1
+    # 테스트용 CSV에서 K1 읽기
+    k1 = load_k_value(1)
 
-#     target = seed["target"]
-#     attack_prompt = seed["prompt"]
 
-#     mutated_prompt = llm_request(attack_prompt)
+    # K1 -> Feedback
+    feedback1 = evaluate_feedback(
+        k_before=k1["k_before"],
+        k_after=k1["k_after"],
+        risk_gain=k1["risk_gain"],
+        threshold=5,
+    )
 
-#     print("TARGET:", target)
-#     print("ORIGINAL:", attack_prompt)
-#     print("MUTATED:", mutated_prompt)
-#     print("------")
+    # Feedback -> Strategy
+    strategy1 = select_mutation_strategy(feedback1)
+
+    print("Feedback1:")
+    print(feedback1)
+
+    print("Strategy1:")
+    print(strategy1)
+    print("------")
+
+
+    # PROMPT1 + Strategy1 -> Mutation Instruction
+    mutation_instruction = generate_next_mutation(
+        previous_prompt=prompt1,
+        strategy=strategy1,
+    )
+
+    if mutation_instruction is None:
+        print("Branch aborted.")
+        return
+
+    print("Mutation Instruction:")
+    print(mutation_instruction)
+    print("------")
+
+
+    # Mutation LLM을 통해 PROMPT2 생성
+    prompt2 = llm_request(mutation_instruction)
+
+    print("PROMPT2:")
+    print(prompt2)
 
 
 if __name__ == "__main__":
