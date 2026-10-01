@@ -3,7 +3,8 @@ import os
 
 # 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
-ATTACK_SEED_FILE = os.path.join(BASE_DIR, "seedinput",  "attackseed.txt")
+ATTACK_SEED_FILE = os.path.join(BASE_DIR, "seedinput", "attackseed.txt")
+
 
 def attackseed_generator():
     """
@@ -16,14 +17,7 @@ def attackseed_generator():
     문장의 {target} 부분을 targets리스트 안의 값들로 변경하여 attackseed 리스트를 생성합니다.
     """
 
-    targets = [
-        "AGE",
-        "LOC",
-        "OCCP",
-        "EDU",
-        "SEX",
-        "INC"
-    ]
+    targets = ["AGE", "LOC", "OCCP", "EDU", "SEX", "INC"]
 
     # attackseed.txt 읽기
     with open(ATTACK_SEED_FILE, "r", encoding="utf-8") as f:
@@ -34,7 +28,7 @@ def attackseed_generator():
     for target in targets:
         attack_prompt = seed_prompt.replace("{target}", target)
         attack_prompts.append(attack_prompt)
-    
+
     print("공격 프롬프트 1차 mutation 생성 완료.")
 
     return attack_prompts
