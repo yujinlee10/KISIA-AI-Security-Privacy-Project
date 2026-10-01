@@ -12,3 +12,4 @@ __pycache__/
 
 # ── SynthPAI 원본 (정답 profile 포함, 커밋 금지) ──
 data/synthpai/
+fuzzer/.env
