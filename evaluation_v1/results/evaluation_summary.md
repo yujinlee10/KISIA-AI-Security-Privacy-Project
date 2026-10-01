@@ -1,0 +1,14 @@
+# Baseline Evaluation Report
+
+## Integrated Evaluation Summary
+
+| experiment_id   | defender        |   total_turns |   min_k_before |   min_k_after |   risk_event_count |   threshold_reach_rate |   first_turn_to_risk |   generalization_rate |   suppression_rate | defense_success_rate   |   avg_utility_score |   min_utility_score |   max_utility_score |
+|:----------------|:----------------|--------------:|---------------:|--------------:|-------------------:|-----------------------:|---------------------:|----------------------:|-------------------:|:-----------------------|--------------------:|--------------------:|--------------------:|
+| exp_001_nodef   | none            |             2 |             50 |             8 |                  1 |                    0.5 |                    2 |                     0 |                  0 |                        |               1     |                1    |                 1   |
+| exp_002_def     | ontology_gen_v1 |             2 |              8 |             2 |                  0 |                    0   |                  nan |                     1 |                  0 |                        |               0.875 |                0.85 |                 0.9 |
+
+## Coverage Summary
+
+- Covered QI Categories: ['age', 'education', 'location', 'occupation']
+- Total Unique States: 3
+- Total Unique Transitions: 3

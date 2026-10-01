@@ -1,0 +1,16 @@
+{
+  "qi_category_turn_counts": {
+    "age": 4,
+    "location": 3,
+    "occupation": 3,
+    "education": 1
+  },
+  "qi_categories_covered": [
+    "age",
+    "education",
+    "location",
+    "occupation"
+  ],
+  "state_count": 3,
+  "transition_count": 3
+}
