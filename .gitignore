@@ -1,0 +1,11 @@
+
+# ── 비밀값 (절대 커밋 금지) ──
+.env
+*.env
+!.env.example
+
+# ── 파이썬 실행 산출물 ──
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
