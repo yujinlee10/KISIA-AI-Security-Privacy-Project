@@ -103,8 +103,11 @@ _EDU_RULES = (
     ("HS Diploma", re.compile(r"고졸|고등학교|high school")),
 )
 
+# Defender가 일반화한 응답("대학 이상의 학력", "학위 미취득")을 다시 추출했을 때 일반화 노드로 읽기 위한 규칙.
+# orchestrator/rewriter.py의 GENERALIZED_PHRASES와 표현을 맞춘다.
 _EDU_GENERAL = (
     ("higher_education", re.compile(r"고등\s*교육|대학\s*이상|higher education|tertiary")),
+    ("non_advanced_degree", re.compile(r"학위\s*미취득|no advanced degree|non[- ]advanced degree")),
 )
 
 
@@ -137,13 +140,27 @@ _REL_RULES = (
 )
 
 
+# 구체 상태가 하나도 없을 때만 본다. "not partnered"가 partnered에 걸리지 않도록 부정형을 먼저 검사한다.
+_REL_NOT_PARTNERED = re.compile(r"파트너가?\s*없|not partnered|unpartnered|no partner")
+_REL_PARTNERED = re.compile(r"파트너가?\s*있|\bpartnered\b|has a partner")
+
+
 def rel_candidates(raw_value: str, value_en: str | None) -> set[str]:
     """
     input : raw_value ("미혼"), value_en ("single")
     output : 후보 값 집합 ({"single"})
+
+    구체 상태가 없으면 Defender가 일반화한 표현(파트너가 있음/없음)을 일반화 노드로 읽는다.
     """
     text = _join(raw_value, value_en)
-    return {value for value, pattern in _REL_RULES if pattern.search(text)}
+    found = {value for value, pattern in _REL_RULES if pattern.search(text)}
+    if found:
+        return found
+    if _REL_NOT_PARTNERED.search(text):
+        return {"not_partnered"}
+    if _REL_PARTNERED.search(text):
+        return {"partnered"}
+    return set()
 
 
 def clean_free_text(text: str) -> str:

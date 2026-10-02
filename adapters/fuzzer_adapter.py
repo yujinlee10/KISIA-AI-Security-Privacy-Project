@@ -13,6 +13,7 @@
 #
 # 한 턴의 질문 만드는 규칙 (POC 기본 정책 — Fuzzer 담당 확인 필요)
 #   새 Seed로 시작 : 첫 턴 / 직전 전략이 abort / 지금 Seed가 State상 더 이상 조건에 맞지 않음
+#                   / k가 변하지 않은 턴이 max_stale_turns번 이어짐 (같은 Seed에 턴을 다 쓰는 것 방지)
 #                   → 조건에 맞는 Seed를 균등하게 골라 채운 뒤, 한재이 main.py의 Turn 0처럼 그대로 Mutation LLM에 보냄
 #   이어서 변형     : 그 외 → 한재이 main.py 루프처럼 generate_next_mutation(직전 질문, 전략) → Mutation LLM
 #
@@ -68,10 +69,14 @@ class FuzzerConfig:
     → 변형 결과가 유효하지 않을 때 다시 요청하는 횟수 (첫 요청 제외). D1: Pilot 후 freeze
     max_query_chars
     → 이보다 긴 변형 결과는 무효 처리
+    max_stale_turns
+    → k가 변하지 않은(unchanged) 턴이 이만큼 이어지면 새 Seed로 넘어간다. None이면 넘어가지 않는다.
+      Target이 답할 수 없는 QI를 노리는 Seed에 남은 턴을 모두 쓰는 것을 막는다. 값은 Fuzzer 담당 확인 필요
     """
     risk_threshold: int = 3
     max_mutation_retries: int = 1
     max_query_chars: int = 1000
+    max_stale_turns: int | None = 2
 
 
 @dataclass(frozen=True)
@@ -84,7 +89,7 @@ class AttackStep:
     seed_id / objective / scenario_code / target_qi
     → 이 질문의 출발 Seed (evaluation 로그의 seed_id·objective·scenario_id·target_qi)
     reset_reason
-    → 새 Seed로 시작한 이유 (FIRST_TURN / ABORT / SEED_NOT_APPLICABLE / NO_FEEDBACK). 이어서 변형했으면 None
+    → 새 Seed로 시작한 이유 (FIRST_TURN / ABORT / SEED_NOT_APPLICABLE / NO_FEEDBACK / STALE). 이어서 변형했으면 None
     strategy / feedback_status
     → 한재이 feedback이 고른 전략과 판정 (새 Seed로 시작한 턴이면 전략은 None)
     bound_seed_text / mutation_instruction
@@ -147,6 +152,7 @@ class FuzzerAdapter:
         self._current_bound_text: str | None = None
         self._current_query: str | None = None
         self._last_feedback: FuzzerFeedback | None = None
+        self._stale_turns = 0   # 지금 Seed에서 k가 변하지 않은 턴이 연속 몇 번인지
 
     # ── 피드백 ───────────────────────────────────────────
 
@@ -164,6 +170,7 @@ class FuzzerAdapter:
             threshold=self._config.risk_threshold,
         )
         self._last_feedback = feedback
+        self._stale_turns = self._stale_turns + 1 if feedback.status == "unchanged" else 0
         return feedback
 
     # ── 다음 질문 ────────────────────────────────────────
@@ -190,6 +197,7 @@ class FuzzerAdapter:
             instruction = None
             user_prompt = bound            # 한재이 main.py Turn 0: Seed를 그대로 Mutation LLM에
             strategy = None
+            self._stale_turns = 0
         else:
             seed = self._current_seed
             bound = self._current_bound_text
@@ -237,6 +245,9 @@ class FuzzerAdapter:
             return "ABORT"
         if not self._selector.is_applicable(self._current_seed, view):
             return "SEED_NOT_APPLICABLE"
+        limit = self._config.max_stale_turns
+        if limit is not None and self._stale_turns >= limit:
+            return "STALE"
         return None
 
     # ── Mutation LLM 호출 + 유효성 검사 ─────────────────

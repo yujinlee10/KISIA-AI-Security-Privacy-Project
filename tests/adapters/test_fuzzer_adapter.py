@@ -177,3 +177,35 @@ def test_step_log_is_flat_and_counts_cost(registry):
     assert log["mutation_input_tokens"] == 60          # 두 번 호출 합계
     assert log["invalid_reasons"] == ["EMPTY"]
     assert log["turn"] == 1
+
+
+# ── 변화 없는 턴이 이어질 때 ──────────────────────────────
+
+def test_stale_turns_move_to_new_seed(registry):
+    adapter, client = make_adapter(registry, reply("q1"), reply("q2"), reply("q3"), max_stale_turns=2)
+    adapter.next_query(EMPTY)
+    adapter.observe(100, 100)                                         # unchanged 1회
+    second = adapter.next_query(AttackStateView({}, 1))
+    adapter.observe(100, 100)                                         # unchanged 2회 연속
+    third = adapter.next_query(AttackStateView({}, 2))
+
+    assert second.reset_reason is None and second.strategy == "diversify"
+    assert third.reset_reason == "STALE"
+    assert client.calls[2]["user_prompt"] == third.bound_seed_text
+
+
+def test_stale_count_resets_when_k_changes(registry):
+    adapter, _ = make_adapter(registry, reply("q1"), reply("q2"), reply("q3"), max_stale_turns=2)
+    adapter.next_query(EMPTY)
+    adapter.observe(100, 100)
+    adapter.next_query(AttackStateView({}, 1))
+    adapter.observe(100, 60)                                          # 줄었으므로 연속 횟수 초기화
+    assert adapter.next_query(AttackStateView({}, 2)).reset_reason is None
+
+
+def test_stale_limit_can_be_disabled(registry):
+    adapter, _ = make_adapter(registry, *[reply(f"q{i}") for i in range(4)], max_stale_turns=None)
+    adapter.next_query(EMPTY)
+    for turn in range(1, 4):
+        adapter.observe(100, 100)
+        assert adapter.next_query(AttackStateView({}, turn)).reset_reason is None

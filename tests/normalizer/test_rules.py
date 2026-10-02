@@ -79,3 +79,22 @@ def test_rel_unmarried_is_not_married():
 )
 def test_clean_free_text(text, expected):
     assert clean_free_text(text) == expected
+
+
+# ── Defender가 일반화한 표현 (orchestrator 재추출용) ───────
+
+@pytest.mark.parametrize(
+    "raw_value, value_en, expected",
+    [
+        ("파트너가 있음", "partnered", {"partnered"}),
+        ("파트너가 없음", "not partnered", {"not_partnered"}),
+        ("기혼", "married", {"married"}),                       # 구체 상태가 있으면 그쪽이 우선
+    ],
+)
+def test_rel_generalized_phrases(raw_value, value_en, expected):
+    assert rel_candidates(raw_value, value_en) == expected
+
+
+def test_edu_non_advanced_degree_phrase():
+    assert edu_candidates("학위 미취득", "no advanced degree") == {"non_advanced_degree"}
+    assert edu_candidates("대학 이상의 학력", "higher education") == {"higher_education"}
