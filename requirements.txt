@@ -1,0 +1,6 @@
+# 실행 의존성 (fuzzer 파트와 동일)
+requests>=2.31
+python-dotenv>=1.0
+
+# 테스트
+pytest>=8.0

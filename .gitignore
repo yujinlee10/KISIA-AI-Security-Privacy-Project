@@ -1,0 +1,20 @@
+
+# ── 비밀값 (절대 커밋 금지) ──
+.env
+*.env
+!.env.example
+
+# ── 파이썬 실행 산출물 ──
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ── SynthPAI 원본 (정답 profile 포함, 커밋 금지) ──
+data/synthpai/
+fuzzer/.env
+CLAUDE.md
+.DS_Store
+risk_defender/data/user_bot_profiles_300000.json
+
+runs/
