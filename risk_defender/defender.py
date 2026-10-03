@@ -82,6 +82,7 @@ def defend_candidate_qis(
                     "action": "suppress",
                     "qi_type": qi.qi_type,
                     "value": qi.value,
+                    "reason": "k_below_suppress_threshold",
                 }
             )
             continue
@@ -144,7 +145,18 @@ def _find_safe_generalization(
     suppress_threshold: int,
     min_confidence: float,
 ) -> QIObservation | None:
-    # generalize_threshold 초과하는 후보를 우선 탐색 (가장 구체적인 것부터)
+    # raw QI 추가 시 k가 suppress_threshold 이하면 일반화 없이 바로 억제
+    raw_projected = evaluate_projected_risk(
+        population,
+        state,
+        [qi],
+        threshold=suppress_threshold,
+        min_confidence=min_confidence,
+    )
+    if raw_projected.k_after <= suppress_threshold:
+        return None
+
+    # suppress_threshold < k ≤ generalize_threshold → 일반화 시도 (가장 구체적인 것부터)
     candidates = [qi, *generalization_chain(qi)]
     for candidate in candidates:
         projected = evaluate_projected_risk(

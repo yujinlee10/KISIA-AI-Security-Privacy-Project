@@ -46,7 +46,8 @@ decision = defend_candidate_qis(
     population,
     state,
     [QIObservation("LOC", "Zurich, Switzerland")],
-    threshold=5,
+    generalize_threshold=5,
+    suppress_threshold=3,
 )
 ```
 
@@ -63,10 +64,15 @@ RiskGain_t = Risk_after - Risk_before
 
 ## Defender 정책
 
-1. 후보 QI를 추가해도 projected `k`가 threshold보다 크면 그대로 허용한다.
-2. projected `k`가 threshold 이하로 떨어지면 해당 QI의 일반화를 시도한다.
-3. 일반화 후 다시 `k`를 계산한다.
-4. 일반화해도 안전하지 않으면 해당 QI를 suppress한다.
+두 개의 threshold를 사용한다: `generalize_threshold=5`, `suppress_threshold=3`
+
+| projected k | 동작 |
+|-------------|------|
+| k > 5 | **allow** — 그대로 허용 |
+| 3 < k ≤ 5 | **generalize** — 일반화 시도, 실패 시 suppress |
+| k ≤ 3 | **suppress** — 일반화 없이 바로 억제 |
+
+k ≤ suppress_threshold이면 어떤 일반화도 시도하지 않고 즉시 해당 QI를 제거한다. k가 위험 구간(3 < k ≤ 5)일 때만 일반화를 거친다.
 
 QI별 일반화 규칙:
 
@@ -98,13 +104,13 @@ risk_defender/data/user_bot_profiles_300.json
 VS Code에서 `risk_defender` 폴더 자체를 열어둔 상태라면 터미널에서 다음처럼 실행한다.
 
 ```bash
-python3 demo.py --threshold 5
+python3 demo.py --generalize-threshold 5 --suppress-threshold 3
 ```
 
 `risk_defender`의 부모 폴더에서 실행한다면 다음 명령도 사용할 수 있다.
 
 ```bash
-python3 -m risk_defender.demo --threshold 5
+python3 -m risk_defender.demo --generalize-threshold 5 --suppress-threshold 3
 ```
 
 실행 결과는 `outputs/demo_single_target.csv`에 저장된다. CSV에는 각 turn마다 원본 QI를 그대로 넣었을 때의 `k_after_raw`, Defender 적용 후의 `k_after_defense`, 일반화 또는 억제 결과가 기록된다.
@@ -114,7 +120,7 @@ python3 -m risk_defender.demo --threshold 5
 ```bash
 python3 -m risk_defender.demo \
   --data /path/to/user_bot_profiles_300.json \
-  --threshold 5
+  --generalize-threshold 5 --suppress-threshold 3
 ```
 
 ## 확장 Population (300,000개)
@@ -134,10 +140,10 @@ python3 scripts/generate_synth_population.py
 
 ```bash
 # 기본값: 원본 300개
-python3 -m risk_defender.demo --threshold 5
+python3 -m risk_defender.demo --generalize-threshold 5 --suppress-threshold 3
 
 # 300,000개 사용 시 --expanded 필요
-python3 -m risk_defender.demo --expanded --threshold 5
+python3 -m risk_defender.demo --expanded --generalize-threshold 5 --suppress-threshold 3
 ```
 
 **생성 옵션**
@@ -166,7 +172,7 @@ DEMO_QI_ORDER = ["LOC", "OCCP", "AGE", "EDU", "REL"]
 따라서 같은 데이터셋, 같은 target, 같은 threshold로 실행하면 CSV 결과도 동일하게 나온다. 다른 target에 대해 확인하고 싶으면 `--target-id`를 지정하면 된다.
 
 ```bash
-python3 -m risk_defender.demo --target-id pers2 --threshold 5
+python3 -m risk_defender.demo --expanded --target-id pers2 --generalize-threshold 5 --suppress-threshold 3
 ```
 
 현재 demo는 랜덤 공격 시뮬레이션이 아니라, 하나의 target에 대해 QI가 순서대로 누적될 때 `k`, risk gain, Defender 동작을 확인하는 재현 가능한 데모이다.
@@ -202,8 +208,8 @@ python3 -m risk_defender.demo --target-id pers2 --threshold 5
 특정 target 1명에 대해 QI가 턴마다 하나씩 추가될 때 어떤 일이 벌어지는지 보여주는 파일이다. k 값이 어떻게 줄어드는지, Defender가 어느 시점에 일반화·억제를 하는지 한 눈에 볼 수 있다.
 
 ```bash
-python3 -m risk_defender.demo --threshold 5  # 기본 target
-python3 -m risk_defender.demo --target-id pers2 --threshold 5  # 다른 target
+python3 -m risk_defender.demo --expanded --generalize-threshold 5 --suppress-threshold 3  # 기본 target
+python3 -m risk_defender.demo --expanded --target-id pers2 --generalize-threshold 5 --suppress-threshold 3  # 다른 target
 ```
 
 ### `poc_01_threshold_sensitivity_summary.csv`
@@ -235,7 +241,7 @@ python3 scripts/poc_defender.py --expanded  # 재생성 시
 
 - State / k / Defender 핵심 모듈 구현 완료. 
 - SynthPAI profile 300명(+ 합성 300,000명)을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제한다. 
-- 여러 target에 대한 batch 실험 및 threshold 비교완료 -> threshold 3으로 결정
+- 여러 target에 대한 batch 실험 및 threshold 비교완료 -> 일반화는 threshold5로, suppress는 threshold 3으로 결정
 
 ## 다음에 할 것
 
