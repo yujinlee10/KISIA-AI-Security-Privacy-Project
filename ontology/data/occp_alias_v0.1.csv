@@ -1,0 +1,174 @@
+alias,isco_code,confidence,note
+accountant,2411,H,
+administrative assistant,3343,L,4110(일반 사무원)일 수도 있음
+agricultural entrepreneur,1311,L,농업 생산 관리자로 봄
+anthropologist,2632,H,
+archaeologist,2632,H,
+archeologist,2632,H,
+architect,2161,H,
+art curator,2621,H,
+art teacher,23,M,학교급을 알 수 없어 교육 전문가(2자리)까지만
+assistant director,2654,L,영화·무대 조감독으로 봄
+astronomer,2111,H,
+bakery assistant,5223,L,매장 판매 보조로 봄
+bank manager,1346,H,
+barista,5132,H,
+biology professor,2310,H,
+book editor,2641,H,
+bookshop assistant,5223,H,
+bookstore assistant,5223,H,
+bus driver,8331,H,
+business analyst,2421,M,
+business consultant,2421,H,
+business development manager,122,M,영업·마케팅·개발 관리자(3자리)까지만
+business manager,1,M,관리 분야를 알 수 없어 관리자(1자리)까지만
+care aide,532,H,5321/5322 구분 불가
+carpenter,7115,H,
+ceo,1120,H,
+ceo of a tech startup,1120,H,
+chef,3434,H,
+chemist,2113,H,
+city manager,1112,M,고위 공무원으로 봄
+civil engineer,2142,H,
+college professor,2310,H,
+community development officer,2,L,2422/2635 구분 불가
+construction engineer,2142,M,
+construction worker,9313,L,기능공(711)일 수도 있음
+cryptographer,2,M,2120/2529 구분 불가
+curator at a museum,2621,H,
+customer service representative,422,M,고객 정보 사무원(3자리)까지만
+data analyst,2,M,ISCO-08에 전용 분류 없음
+data scientist,2,M,ISCO-08에 전용 분류 없음
+diplomatic officer,1112,L,2422일 수도 있음
+doctor,221,H,일반의/전문의 구분 불가
+economist,2631,H,
+electrical engineer,2151,H,
+engineer,21,H,공학 분야를 알 수 없음
+english teacher,23,M,학교급을 알 수 없음
+entrepreneur,X,L,업종·역할을 알 수 없음
+environmental activist,X,L,직업 분류 대상인지 불분명
+environmental consultant,2133,H,
+environmental engineer,2143,H,
+environmental scientist,2133,H,
+event manager,3332,M,
+executive chef,3434,H,
+farmer,61,H,작물/축산 구분 불가
+fashion designer,2163,H,
+film editor,2654,M,
+finance manager,1211,H,
+financial advisor,2412,H,
+financial analyst,2413,H,
+financial manager,1211,H,
+fisherman,622,H,
+gallery assistant,5223,L,
+game developer,251,H,2512/2513 구분 불가
+geologist,2114,H,
+geophysicist,2114,H,
+graduate assistant,2310,L,대학 조교로 봄
+graphic designer,2166,H,
+gym assistant,3423,L,
+gym instructor,3423,H,
+gym owner,1431,M,
+hairdresser,5141,H,
+health consultant,22,L,
+health inspector,3257,H,
+high school music teacher,2330,H,
+high school principal,1345,H,
+high school teacher,2330,H,
+historian,2633,H,
+history professor,2310,H,
+history teacher,23,M,학교급을 알 수 없음
+hotel manager,1411,H,
+hr specialist,2423,H,
+human resources manager,1212,H,
+human rights lawyer,2611,H,
+interior designer,3432,H,
+it consultant,251,M,
+it specialist,25,M,
+it technician,351,H,
+italian teacher at a language school,2353,H,
+journalist,2642,H,
+lab assistant,3,M,과학(31)/보건(32) 구분 불가
+lab technician,3,M,과학(31)/보건(32) 구분 불가
+laboratory technician,3,M,과학(31)/보건(32) 구분 불가
+lawyer,2611,H,
+lexicographer,2643,H,
+librarian,2622,H,
+library assistant,4411,H,
+literature professor,2310,H,
+mailman,4412,H,
+marine biologist,2131,H,
+marketing manager,1221,H,
+marketing specialist,2431,H,
+math teacher,23,M,학교급을 알 수 없음
+mechanical engineer,2144,H,
+museum curator,2621,H,
+museum tour guide,5113,H,
+music critic,2642,M,
+music teacher,23,M,2330/2354 구분 불가
+music therapist,2269,M,
+news reporter,2642,H,
+newspaper editor,2642,H,
+non-profit worker,X,L,직무를 알 수 없음
+nurse,2221,M,간호 준전문가(3221)일 수도 있음
+nutritionist,2265,H,
+office assistant,4110,M,
+operations manager,1,M,1219/1321 구분 불가
+painter,2651,L,화가로 봄 (도장공 7131일 수도 있음)
+pe teacher,23,M,학교급을 알 수 없음
+petroleum engineer,2146,H,
+philosophy professor,2310,H,
+physics researcher,2111,H,
+physiotherapist,2264,H,
+policeman,5412,H,
+political analyst,2633,M,
+political science professor,2310,H,
+portrait artist,2651,H,
+pr assistant,2432,L,
+pr manager,1222,H,
+professor,2310,H,
+programmer,251,H,
+psychologist,2634,H,
+public health officer,2263,M,
+real estate developer,1,L,
+receptionist,4226,H,
+renewable energy consultant,21,M,2133/2149 구분 불가
+research assistant,2,L,분야·직급을 알 수 없음
+research scientist,2,M,분야를 알 수 없음
+retail worker,522,H,
+retired,X,H,은퇴 상태만 있고 직업 정보 없음
+retiree,X,H,은퇴 상태만 있고 직업 정보 없음
+robotics engineer,21,H,2144/2152 구분 불가
+sales assistant,5223,H,
+sales associate,522,M,
+school principal,1345,H,
+school teacher,23,H,학교급을 알 수 없음
+sculptor,2651,H,
+server,5131,H,
+shop owner,5221,H,
+social worker,2635,H,
+sociology lecturer,2310,H,
+sociology lecturer at a university,2310,H,
+sociology professor,2310,H,
+software developer,2512,H,
+software engineer,2512,H,
+software tester,251,M,
+spanish teacher,23,M,학교급을 알 수 없음
+structural engineer,2142,H,
+surgeon,2212,H,
+taxi driver,8322,H,
+teacher,23,H,학교급을 알 수 없음
+theatre director,2654,H,
+therapist,2,L,2264/2634/2635 구분 불가
+tour guide,5113,H,
+tour manager,5113,L,
+tourism manager,1,L,
+translator,2643,H,
+tutor,23,M,
+university lecturer,2310,H,
+university professor,2310,H,
+urban planner,2164,H,
+waiter,5131,H,
+web designer,2166,H,
+web developer,2513,H,
+writer,2641,H,
