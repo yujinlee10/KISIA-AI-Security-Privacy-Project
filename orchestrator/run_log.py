@@ -18,15 +18,15 @@ from typing import Any
 
 from adapters.risk_adapter import RiskConfig
 from evaluation_v1.log_schema_v1 import KST, ExperimentLogRecord, LogManager
-from orchestrator.release_gate import Condition
+from orchestrator.release_gate import Arm, DefenderMode
 from orchestrator.session import SessionResult, TurnRecord
 
 CSV_FILE_NAME = "experiment_log.csv"
 TRACE_FILE_NAME = "trace.jsonl"
 CONFIG_FILE_NAME = "run_config.json"
 
-DEFENDER_NAME = "risk_defender"   # evaluation 로그 defender 컬럼 값 (C1)
-NO_DEFENDER_NAME = "none"         # C0
+NO_DEFENDER_NAME = "none"         # evaluation 로그 defender 컬럼 값 (C0)
+STATELESS_SUFFIX = "_stateless"   # 무상태 Defender는 백엔드 이름 뒤에 붙인다 (예: risk_defender_stateless)
 
 
 class RunLogger:
@@ -67,18 +67,19 @@ class RunLogger:
 
     # ── 턴 기록 ──────────────────────────────────────────
 
-    def log_turn(self, target_id: str, condition: Condition, record: TurnRecord) -> ExperimentLogRecord:
+    def log_turn(self, target_id: str, arm: Arm, record: TurnRecord) -> ExperimentLogRecord:
         """
-        input : target_id, condition, record (세션이 만든 턴 기록)
+        input : target_id, arm (실험 갈래), record (세션이 만든 턴 기록)
         output : evaluation 형식 레코드 (CSV에 쓴 것과 같은 객체)
         """
-        row = self.to_evaluation_record(target_id, condition, record)
+        row = self.to_evaluation_record(target_id, arm, record)
         self._csv.log_turn(row)
         self._append_trace({
             "type": "turn",
             "experiment_id": self._experiment_id,
             "target_id": target_id,
-            "condition": condition.value,
+            "arm": arm.label,
+            "condition": arm.condition.value,
             **record.to_trace_dict(),
         })
         return row
@@ -88,6 +89,7 @@ class RunLogger:
             "type": "session_end",
             "experiment_id": self._experiment_id,
             "target_id": result.target_id,
+            "arm": result.arm.label,
             "condition": result.condition.value,
             "turns": len(result.turns),
             "stop_reason": result.stop_reason.value,
@@ -96,9 +98,11 @@ class RunLogger:
             "k_final": result.k_final,
             "k_min": result.k_min,
             "first_violation_turn": result.first_violation_turn(self._risk_config.k_req),
+            "unresolved_released": result.unresolved_released,
+            "coverage": result.coverage,
         })
 
-    def to_evaluation_record(self, target_id: str, condition: Condition,
+    def to_evaluation_record(self, target_id: str, arm: Arm,
                              record: TurnRecord) -> ExperimentLogRecord:
         """
         TurnRecord → 이정민 파트 ExperimentLogRecord.
@@ -110,6 +114,10 @@ class RunLogger:
           utility_score : 유용성 채점 기준이 정해진 뒤 채운다.
         """
         attack, commit, release = record.attack, record.commit, record.release
+        defender = NO_DEFENDER_NAME
+        if release.defender_enabled:
+            stateless = release.defender_mode is DefenderMode.STATELESS
+            defender = release.defender_name + (STATELESS_SUFFIX if stateless else "")
         return ExperimentLogRecord(
             experiment_id=self._experiment_id,
             target_id=target_id,
@@ -120,8 +128,8 @@ class RunLogger:
             target_qi=attack.target_qi,
             k_run_before=commit.k_before,
             k_run_after=commit.k_after,
-            condition=condition.value,
-            defender=DEFENDER_NAME if release.defender_enabled else NO_DEFENDER_NAME,
+            condition=arm.condition.value,
+            defender=defender,
             unlearning=False,
             qi_relation=record.relation,
             qi=list(record.disclosed_after),

@@ -15,11 +15,10 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from core.schemas import QI_TYPES
 from normalizer.normalizer import NormalizedObservation
-from risk_defender.schema import is_more_specific
 
 EMPTY_STATE_ID = "S-EMPTY"
 
@@ -65,31 +64,35 @@ def state_id(disclosed: Mapping[str, str]) -> str:
 
 def qi_relation(
     target_qi: str,
-    before: Mapping[str, str],
-    after: Mapping[str, str],
+    committed_before: Mapping[str, Any],
+    committed_after: Mapping[str, Any],
+    disclosed_before: Mapping[str, str],
+    disclosed_after: Mapping[str, str],
     released: Sequence[NormalizedObservation],
+    compare: Callable[[str, Any, Any], str],
 ) -> str:
     """
-    input : target_qi (이번 턴 Seed가 노린 QI), before·after (턴 전후 공개 상태), released (이번 턴 공개 관찰)
+    input : target_qi (이번 턴 Seed가 노린 QI), committed_before·after (턴 전후 State),
+            disclosed_before·after (턴 전후 공개 상태. State에 못 들어간 공개분 포함),
+            released (이번 턴 공개 관찰),
+            compare (위험 계산 백엔드의 relation(QI, 기존 값, 새 값). 구체성 비교는 백엔드의 계층을 따른다)
     output : evaluation VALID_QI_RELATIONS 중 하나
 
-      NEW          : 처음 공개됨
-      DESCENDANT   : 더 구체적인 값으로 바뀜
+      NEW          : 처음 공개됨 (State에 처음 들어갔거나, State에는 못 들어갔지만 이번에 처음 공개됨)
+      DESCENDANT   : State의 값이 더 구체적인 값으로 바뀜
       SAME         : 변화 없음 (이번 턴에 그 QI가 안 나왔거나 같은 값)
       ANCESTOR     : 이미 공개된 값보다 덜 구체적인 값이 나옴 (State는 그대로)
       INCOMPATIBLE : 이미 공개된 값과 양립하지 않는 값이 나옴 (State는 그대로, 충돌 기록)
-    구체성 비교는 risk_defender.schema.is_more_specific을 그대로 쓴다.
     """
-    old, new = before.get(target_qi), after.get(target_qi)
+    old, new = committed_before.get(target_qi), committed_after.get(target_qi)
     if old is None:
-        return "NEW" if new is not None else "SAME"
+        first_seen = target_qi not in disclosed_before and target_qi in disclosed_after
+        return "NEW" if new is not None or first_seen else "SAME"
     if new != old:
         return "DESCENDANT"
 
     for obs in released:
         if obs.attribute != target_qi or not obs.is_mapped or obs.canonical_value == old:
             continue
-        if is_more_specific(target_qi, old, obs.canonical_value):
-            return "ANCESTOR"
-        return "INCOMPATIBLE"
+        return "ANCESTOR" if compare(target_qi, old, obs.canonical_value) == "ANCESTOR" else "INCOMPATIBLE"
     return "SAME"

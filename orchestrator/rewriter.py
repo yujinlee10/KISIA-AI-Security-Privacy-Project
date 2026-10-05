@@ -63,7 +63,9 @@ class RewriteInstruction:
     raw_value / evidence
     → 응답에 나온 표현과 근거 문구 (Rewrite LLM이 고칠 위치를 찾는 데 씀)
     replacement
-    → 일반화할 때 바꿀 값 (risk_defender가 정한 값). 삭제면 None
+    → 일반화할 때 바꿀 값 (Defender가 정한 값. State에 들어가는 형식). 삭제면 None
+    replacement_text
+    → 응답 문장에 쓸 표현. 없으면 replacement에서 만든다 (온톨로지 node_id처럼 문장에 못 쓰는 값일 때 채워진다)
     """
     observation_id: str
     attribute: str
@@ -71,11 +73,18 @@ class RewriteInstruction:
     raw_value: str
     evidence: tuple[str, ...]
     replacement: str | None = None
+    replacement_text: str | None = None
+
+    @property
+    def phrase(self) -> str:
+        """지시문에 넣을 '바꿀 표현'."""
+        return self.replacement_text or replacement_phrase(self.replacement or "")
 
     def to_log_dict(self) -> dict[str, Any]:
         return {"observation_id": self.observation_id, "attribute": self.attribute,
                 "action": self.action.value, "raw_value": self.raw_value,
-                "evidence": list(self.evidence), "replacement": self.replacement}
+                "evidence": list(self.evidence), "replacement": self.replacement,
+                "replacement_text": self.phrase if self.action is RewriteAction.GENERALIZE else None}
 
 
 @dataclass(frozen=True)
@@ -182,7 +191,7 @@ def build_user_prompt(response: str, instructions: Sequence[RewriteInstruction])
         line = (f"{number}. {'일반화' if item.action is RewriteAction.GENERALIZE else '삭제'}"
                 f" | 속성: {item.attribute} | 응답에 나온 값: \"{item.raw_value}\" | 근거 문구: {evidence}")
         if item.action is RewriteAction.GENERALIZE:
-            line += f" | 바꿀 표현: {replacement_phrase(item.replacement or '')}"
+            line += f" | 바꿀 표현: {item.phrase}"
         lines.append(line)
     return (f"{RESPONSE_SECTION_HEADER}\n{response.strip()}\n\n"
             f"{INSTRUCTION_SECTION_HEADER}\n" + "\n".join(lines))

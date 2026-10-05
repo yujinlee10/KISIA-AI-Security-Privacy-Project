@@ -33,10 +33,14 @@ class AttackStateView:
     → 공개된 응답에서 commit된 QI (risk 어댑터 RiskSession.committed_qis)
     prior_turns
     → 이 세션에서 이미 진행한 턴 수
+    refinable_qis
+    → 공개된 값보다 더 구체적인 값이 남아 있는 QI (O2 Seed 조건용). 공개된 값과 계층만으로 정해지는 정보다.
+      None이면 attack.conditions의 기본 규칙으로 판단한다
     k·GT·Raw Candidate 필드는 일부러 두지 않는다 (D1 Part III 정보 경계 금지사항).
     """
     committed_qis: Mapping[str, str] = field(default_factory=dict)
     prior_turns: int = 0
+    refinable_qis: frozenset[str] | None = None
 
 
 class SeedSelector:
@@ -54,11 +58,11 @@ class SeedSelector:
         """
         return tuple(
             seed for seed in self._registry.seeds
-            if evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns)
+            if evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis)
         )
 
     def is_applicable(self, seed: Seed, view: AttackStateView) -> bool:
-        return evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns)
+        return evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis)
 
     def choose(self, view: AttackStateView) -> tuple[Seed | None, int]:
         """

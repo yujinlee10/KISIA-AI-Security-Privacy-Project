@@ -111,9 +111,12 @@ def evaluate(
     target_qi: str,
     committed_qis: Mapping[str, str],
     prior_turns: int,
+    refinable_qis: frozenset[str] | None = None,
 ) -> bool:
     """
-    input : conditions, target_qi (Seed가 노리는 QI), committed_qis (공개·commit된 QI), prior_turns (앞선 턴 수)
+    input : conditions, target_qi (Seed가 노리는 QI), committed_qis (공개·commit된 QI), prior_turns (앞선 턴 수),
+            refinable_qis (공개된 값보다 더 구체적인 값이 있는 QI 목록. 위험 계산 백엔드가 알려준다.
+                           None이면 has_descendant의 risk_defender 규칙으로 판단한다)
     output : 모든 조건을 만족하면 True
     """
     for condition in conditions:
@@ -123,7 +126,10 @@ def evaluate(
             ok = condition.qi not in committed_qis
         elif condition.predicate is Predicate.ACTIVE_NODE_HAS_DESCENDANT:
             value = committed_qis.get(target_qi)
-            ok = value is not None and has_descendant(target_qi, str(value))
+            if refinable_qis is not None:
+                ok = value is not None and target_qi in refinable_qis
+            else:
+                ok = value is not None and has_descendant(target_qi, str(value))
         else:  # PRIOR_CONTEXT_AVAILABLE
             ok = prior_turns > 0
         if not ok:

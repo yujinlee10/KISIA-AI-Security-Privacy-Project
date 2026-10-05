@@ -1,6 +1,7 @@
 # adapters 패키지: 팀원 모듈을 통합 파이프라인에 연결하는 어댑터
 #
 #   risk_adapter.py      : risk_defender(이유진 파트) — 기준 집단 적재, 후보 수 k, Defender, State commit
+#   ontology_risk.py     : 온톨로지 백엔드 — ontology 패키지의 계층으로 같은 일을 하는 두 번째 방식 (D1 Stage 3·11)
 #   prepare_reference.py : 기준 집단 데이터 준비 (원본 300명 다운로드 + 합성 30만 명 생성)
 #   fuzzer_adapter.py    : fuzzer(한재이 파트) — k 피드백 → 변형 전략 → Mutation LLM으로 다음 질문
 #
