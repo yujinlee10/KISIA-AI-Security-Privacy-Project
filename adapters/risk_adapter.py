@@ -269,12 +269,14 @@ class RiskBackend(Protocol):
     orchestrator가 위험 계산 세션에 기대하는 모양. RiskSession과 OntologyRiskSession이 이를 만족한다.
 
     committed_qis      : 현재 State (QI → 값). 값 형식은 백엔드마다 다르다 (문자열 값 / 온톨로지 node_id)
+    counted_qis        : 이 백엔드가 k 계산에 넣는 QI 종류 (공격 Seed 선택 범위를 맞추는 데 쓴다)
     refinable_qis      : 지금 값보다 더 구체적인 값이 있는 QI. None이면 attack.conditions의 기본 규칙을 쓴다
     display_value()    : State 값을 사람이 읽는 표현으로 (Seed 문장 채우기, 화면 출력용)
     relation()         : 이미 공개된 값(existing)에 비해 새 값(candidate)이 어떤 관계인지
     fresh()            : 같은 기준 집단·설정의 빈 세션 (무상태 대조군의 판정용)
     """
     backend_name: str
+    counted_qis: frozenset[str]
 
     @property
     def config(self) -> "RiskConfig": ...
@@ -338,6 +340,7 @@ class RiskSession:
         return len(self._state.conflicts)
 
     backend_name = "risk_defender"
+    counted_qis = RISK_DEFENDER_QI_TYPES
 
     @property
     def refinable_qis(self) -> frozenset[str] | None:

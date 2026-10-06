@@ -172,3 +172,36 @@ waiter,5131,H,
 web designer,2166,H,
 web developer,2513,H,
 writer,2641,H,
+developer,251,M,개발 분야 불명 (소프트웨어 개발자로 봄)
+coder,251,M,
+software development,251,M,직업명이 아닌 분야 표현
+software programmer,251,H,
+computer programmer,251,H,
+it professional,25,M,
+it worker,25,L,
+tech worker,25,L,
+engineer in tech,25,L,
+student,X,H,학생 신분만 있고 직업 정보 없음
+university student,X,H,학생 신분만 있고 직업 정보 없음
+unemployed,X,H,직업 없음
+physician,221,H,
+medical doctor,221,H,
+registered nurse,2221,H,
+university teacher,2310,H,
+lecturer,2310,M,
+researcher,2,M,분야를 알 수 없음
+scientist,2,M,분야를 알 수 없음
+consultant,2,L,분야를 알 수 없음
+manager,1,M,관리 분야를 알 수 없음
+designer,216,M,디자인 분야 불명
+artist,2651,M,
+editor,264,M,2641/2642 구분 불가
+reporter,2642,H,
+attorney,2611,H,
+barman,5132,H,
+bartender,5132,H,
+waitress,5131,H,
+cook,5120,M,
+police officer,5412,H,
+driver,83,M,차종을 알 수 없음
+sales manager,1221,H,

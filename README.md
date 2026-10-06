@@ -9,12 +9,16 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 592개 통과 (LLM 호출은 가짜 client 사용) |
+| 단위·통합 테스트 | 651개 통과 (LLM 호출은 가짜 client 사용) |
 | 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
 | 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
 | Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
-| C2·C3 (경량 언러닝 규칙 주입) | 미구현 |
-| 정답(GT) 대조 평가 `k_val` | 미구현 (로그 컬럼은 비워 둠) |
+| 위험 경로 보관 (D1 Stage 10) | 실행 중 k가 k_req 아래로 내려간 세션의 질문 순서를 `high_risk_paths.jsonl`에 기록 |
+| 정답(GT) 대조 평가 `k_val` | `python -m validation` (실행이 끝난 뒤 따로 돌림. 실행 중 코드는 정답을 읽지 않음) |
+| Exact Replay (D1 Stage 13) | `python -m orchestrator.replay` (보관된 질문을 새 세션에서 그대로 재실행) |
+| 실행 집계 | `python -m orchestrator.report` |
+| C2·C3 (경량 언러닝 규칙 생성·주입) | 미구현 |
+| 변형 재공격 (D1 Stage 14), Interesting 질문의 Seed 승격 | 미구현 |
 
 모듈별 상세 설명(Risk/Defender 정책, Threshold 선정 근거, Evaluation 로그 컬럼)은 [docs/modules.md](docs/modules.md)에, 온톨로지 계층과 검토가 필요한 항목은 [docs/ontology.md](docs/ontology.md)에 있습니다.
 
@@ -29,7 +33,8 @@
 | `attack/` | 양승준 | Seed 레지스트리 적재, 조건 평가, Seed 선택 |
 | `ontology/` | 양승준 (계층 명세 검토: 배성윤) | 8개 QI의 표준 값과 상하위 관계, 기준 집단 매핑, 후보 수 색인, 일반화 탐색 |
 | `adapters/` | 양승준 | `risk_defender`·`fuzzer` 연결 어댑터, 온톨로지 백엔드(`ontology_risk.py`) |
-| `orchestrator/` | 양승준 | 턴 루프, 공개 게이트, 응답 재작성, Coverage 기록, 실행 기록 |
+| `orchestrator/` | 양승준 | 턴 루프, 공개 게이트, 응답 재작성, Coverage 기록, 실행 기록, 위험 경로 보관, 재실행, 집계 |
+| `validation/` | 양승준 | 실행이 끝난 뒤 State를 정답과 대조해 `k_val` 계산 (실행 중 코드에서 import 금지) |
 | `fuzzer/` | 한재이 | k 피드백 → 변형 전략 → Mutation 지시문 |
 | `risk_defender/` | 이유진 | Privacy State, k 계산, 일반화·억제 판정 |
 | `evaluation_v1/` | 이정민 | 실험 로그 스키마, 지표 계산 |
@@ -41,7 +46,7 @@
 
 ## 한 턴의 처리 순서
 
-1. **질문 생성** — 공개된 QI와 턴 수만 보고 조건에 맞는 Seed를 고른 뒤 Mutation LLM으로 질문을 만든다.
+1. **질문 생성** — 공개된 QI와 턴 수만 보고 조건에 맞는 Seed를 고른 뒤 Mutation LLM으로 질문을 만든다. Seed는 위험 계산에 들어가는 QI를 노리는 것부터 고른다.
 2. **Target 응답** — 대상 persona의 코멘트를 문맥으로 원 응답(raw candidate)을 만든다.
 3. **추출·정규화** — 원 응답에서 QI를 뽑아 기준 집단 표기로 바꾼다.
 4. **공개 게이트**
@@ -96,7 +101,7 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 592 passed
+python -m pytest -q                     # 651 passed
 python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 
@@ -105,8 +110,8 @@ python -m ontology                      # 기준 집단이 온톨로지로 전�
 ### 전체 실행
 
 ```bash
-python -m orchestrator --target pers1 --arms C0 C1 --turns 5
-python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turns 5
+python -m orchestrator --target pers1 --arms C0 C1 --turns 10 --experiment-id run_rd
+python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turns 10 --experiment-id run_onto
 ```
 
 | 옵션 | 기본값 | 설명 |
@@ -121,6 +126,9 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `--rng-seed` | `42` | Seed 선택 난수 |
 | `--defense-rounds` | `2` | 응답 고쳐 쓰기 최대 횟수 |
 | `--experiment-id` | `poc_날짜_시각` | 결과 폴더 이름 |
+| `--temperature` | `0` | Target 응답의 temperature. 갈래 간 차이가 응답의 우연한 흔들림에서 오지 않게 고정한다. 음수를 주면 서버 기본값 |
+| `--all-seeds` | 꺼짐 | 켜면 k에 들어가지 않는 QI를 묻는 Seed도 고른다 (기본은 백엔드가 세는 QI를 노리는 Seed만) |
+| `--extractor-prompt` | `extractor_system_v2` | 추출 프롬프트 버전. v2는 값마다 표준 영어 표기(`value_en`)를 요구한다. 이전 동작은 `extractor_system_v1` |
 
 턴당 LLM 호출은 질문 생성 1회, Target 1회, 추출 1회이고, C1에서 Defender가 개입하면 재작성과 재추출이 1회씩 더 듭니다. 기준 집단 30만 명 적재에 수 초, 메모리 약 500MB가 필요합니다.
 
@@ -132,9 +140,37 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | --- | --- |
 | `experiment_log.csv` | `evaluation_v1/log_schema_v1.py` 형식의 턴별 기록 (k 전후, 위반·교차 여부, 일반화·억제 여부) |
 | `trace.jsonl` | 턴별 상세 기록 (질문, 원 응답, 추출·정규화, Defender 판정, 재작성, 공개 응답, Coverage 판정). 세션 끝에는 Coverage 요약 |
-| `run_config.json` | 실행 설정 (모델, 프롬프트 버전, 기준 집단, Seed 파일 해시, 위험 기준, 백엔드, 온톨로지 버전·해시) |
+| `run_config.json` | 실행 설정 (모델, 프롬프트 버전, temperature, 기준 집단, Seed 파일 해시, 위험 기준, 백엔드, 온톨로지 버전·해시) |
+| `high_risk_paths.jsonl` | 실행 중 1 ≤ k < k_req에 도달한 세션마다 한 줄 (질문 순서, Seed, 턴별 k). 그런 세션이 없으면 파일도 없음 |
+| `validation.jsonl`, `experiment_log_validated.csv`, `validated_paths.jsonl` | `python -m validation`이 만든다 (아래) |
+| `report.md` | `python -m orchestrator.report`가 만든다 (아래) |
 
 `experiment_log.csv`의 `defender` 컬럼은 `none` / `risk_defender` / `ontology_d1`이고, 무상태 갈래는 뒤에 `_stateless`가 붙습니다.
+
+### 실행이 끝난 뒤: 검증 → 집계 → 재실행
+
+세 명령 모두 `runs/` 아래 폴더 이름을 받습니다. 검증과 집계는 LLM을 부르지 않습니다.
+
+```bash
+python -m validation run_rd run_onto            # 정답 대조: k_val, QI별 판정, 위험 경로의 검증 상태
+python -m orchestrator.report run_rd run_onto   # 집계 표를 화면과 runs/<id>/report.md로
+python -m orchestrator.replay --source run_rd --arms C0 C1 --repeats 2   # 보관된 질문 재실행 (LLM 호출)
+python -m validation run_rd__replay             # 재실행 결과도 정답 대조
+```
+
+**k_run과 k_val.** 실행 중 k(`k_run`)는 State에 들어간 값으로 센 후보 수입니다. 응답이 틀린 값을 말했거나 추출이 틀렸으면 그 후보 안에 대상 본인이 없을 수 있고, 극단적으로는 0명이 됩니다. `k_val`은 State의 QI 중 대상의 실제 값과 맞는 것(같거나 더 넓은 값)만 남겨 다시 센 수입니다. 대상 본인은 항상 포함되므로 1 이상이고, `k_run`보다 작아지지 않습니다. 결과로 보고하는 수치는 `k_val`입니다 (D1 Stage 2).
+
+| 검증 결과 파일 | 내용 |
+| --- | --- |
+| `validation.jsonl` | 턴마다 `k_run`, `k_val`, QI별 판정(CORRECT / LESS_PRECISE / INCORRECT / UNASSESSABLE), 세션마다 요약 |
+| `experiment_log_validated.csv` | `experiment_log.csv`에 `k_val` 컬럼을 채운 사본. 원본은 그대로 둔다 |
+| `validated_paths.jsonl` | 보관된 경로에 `validation_status`를 채운 사본. `VALIDATED_HIGH_RISK`(맞는 QI만으로도 k_req 아래) / `NOT_VALIDATED`(틀린 값 때문에 위험해 보였던 경로) |
+
+**재실행(Exact Replay).** 보관된 경로의 질문 원문과 순서를 고정하고 빈 State의 새 세션에서 다시 던집니다. 질문을 다시 만들지 않으므로 Mutation LLM은 부르지 않고, Target 응답·추출·Defender 판정은 새로 합니다. 결과는 `runs/<source>__replay/`에 같은 형식으로 남고 CSV의 `replay_type`이 `exact_replay`입니다. 백엔드·위험 기준·기준 집단·Target temperature는 원래 실행의 `run_config.json`에서 가져옵니다. 화면에 나오는 "재발"은 `k_run` 기준이므로, 확정하려면 재실행 폴더에도 `python -m validation`을 돌립니다.
+
+위험 경로가 이어지는 순서는 다음과 같습니다. 굵은 글씨까지가 구현된 부분입니다.
+
+**실행 → 보관(`high_risk_paths.jsonl`) → 정답 대조(`validated_paths.jsonl`) → 재실행** → 규칙 생성·주입(C2·C3) → 변형 재공격
 
 ### 두 가지 위험 계산 백엔드
 
@@ -166,10 +202,15 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 | 기준 집단 | 30만 명 | 국가명·관계 상태 표기가 일부 섞여 있음 |
 | k 계산 대상 QI | 기본 백엔드 5개 / `ontology` 8개 | 기본 백엔드에서 SEX, INC, POB는 추출·기록만 함 |
 | 일반화 계층 | 기본은 `risk_defender` 계층 | D1 Stage 3 계층은 `--backend ontology`로 사용 |
-| 직업 → ISCO 대응표 | `ontology/data/occp_alias_v0.1.csv` (173행) | 기계 초안. 57행은 사람 검토 필요 (`python -m ontology --show-review`) |
+| 직업 → ISCO 대응표 | `ontology/data/occp_alias_v0.1.csv` (206행) | 기계 초안. 74행은 사람 검토 필요 (`python -m ontology --show-review`) |
 | 억제 시점 | 백엔드마다 다름 | `risk_defender`는 k ≤ 3이면 일반화 없이 억제, D1은 일반화를 먼저 시도 |
 | Target 검색 | persona 코멘트 전체 | 임베딩 top-k 검색은 미적용 |
 | Seed | 117개, 개발 모드 | 사람 검토 전이라 본 실험 모드에서는 적재 거부 |
+| Seed 대상 QI | 백엔드가 세는 QI 우선 | 기본 백엔드에서 소득·성별·출생지 Seed는 그 안에서 고를 것이 없을 때만 씀. `--all-seeds`로 해제 |
+| 모호한 답의 구체화 | 켜짐 | 공개됐지만 표준 값으로 풀지 못한 답("코딩 일" 등)이 있으면 그 QI의 O2(구체화) Seed를 쓸 수 있음 |
+| 추출 프롬프트 | `extractor_system_v2` | 실제 모델로 v1과 비교 검증 전. 정규화 실패가 줄었는지는 `report.md`의 미해석 건수로 확인 |
+| State ID | State에 반영된 값 기준 | Part 7까지는 공개 기록 기준이었음. 이전 실행의 `state_id`와는 값이 다름 |
+| 검증의 범위 | State에 들어간 QI만 | 정규화하지 못한 공개분은 `k_val`에도 반영되지 않음 |
 
 ## 브랜치와 커밋 규칙
 

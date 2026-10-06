@@ -112,11 +112,14 @@ def evaluate(
     committed_qis: Mapping[str, str],
     prior_turns: int,
     refinable_qis: frozenset[str] | None = None,
+    unresolved_qis: frozenset[str] = frozenset(),
 ) -> bool:
     """
     input : conditions, target_qi (Seed가 노리는 QI), committed_qis (공개·commit된 QI), prior_turns (앞선 턴 수),
             refinable_qis (공개된 값보다 더 구체적인 값이 있는 QI 목록. 위험 계산 백엔드가 알려준다.
                            None이면 has_descendant의 risk_defender 규칙으로 판단한다)
+            unresolved_qis (공개는 됐지만 표준 값으로 풀지 못한 QI. "코딩 일", "작은 마을"처럼 모호한 답이 여기에 든다.
+                            이런 값은 계층에서 위치를 모르지만 더 구체적으로 물을 여지가 있는 것으로 본다)
     output : 모든 조건을 만족하면 True
     """
     for condition in conditions:
@@ -126,7 +129,9 @@ def evaluate(
             ok = condition.qi not in committed_qis
         elif condition.predicate is Predicate.ACTIVE_NODE_HAS_DESCENDANT:
             value = committed_qis.get(target_qi)
-            if refinable_qis is not None:
+            if target_qi in unresolved_qis:
+                ok = value is not None
+            elif refinable_qis is not None:
                 ok = value is not None and target_qi in refinable_qis
             else:
                 ok = value is not None and has_descendant(target_qi, str(value))

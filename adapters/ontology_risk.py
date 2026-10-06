@@ -33,7 +33,7 @@ from adapters.risk_adapter import (
     RiskProjection,
     Selection,
 )
-from core.schemas import QI_TYPES
+from core.schemas import QI_TYPE_SET, QI_TYPES
 from normalizer.normalizer import NormalizedObservation
 from ontology.defender import DeltaItem, plan_release
 from ontology.index import PopulationIndex
@@ -54,6 +54,7 @@ def build_population_index(population: ReferencePopulation) -> PopulationIndex:
 
 class OntologyRiskSession:
     backend_name = BACKEND_NAME
+    counted_qis = QI_TYPE_SET
 
     def __init__(self, index: PopulationIndex, target_id: str, session_id: str,
                  config: RiskConfig = RiskConfig()) -> None:

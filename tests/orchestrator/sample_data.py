@@ -24,6 +24,7 @@ from adapters.fuzzer_adapter import _load_system_prompt as load_fuzzer_prompt
 from adapters.risk_adapter import PopulationMode, ReferencePopulation
 from core.llm_client import LLMResponse
 from orchestrator.rewriter import load_prompt as load_rewriter_prompt
+from qi_extractor.extractor import DEFAULT_PROMPT_VERSION as DEFAULT_EXTRACTOR_PROMPT
 from qi_extractor.extractor import RESPONSE_SECTION_HEADER
 from qi_extractor.extractor import load_prompt as load_extractor_prompt
 from risk_defender.loader import PersonaRecord
@@ -173,7 +174,7 @@ class RoleClient:
         self._prompts = {
             "fuzzer": load_fuzzer_prompt(),
             "target": load_target_prompt("target_system_v1"),
-            "extractor": load_extractor_prompt("extractor_system_v1"),
+            "extractor": load_extractor_prompt(DEFAULT_EXTRACTOR_PROMPT),
             "rewriter": load_rewriter_prompt("rewriter_system_v1"),
         }
         self.calls: list[dict[str, Any]] = []

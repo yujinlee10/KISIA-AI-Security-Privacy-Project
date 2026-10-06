@@ -67,6 +67,7 @@ class ExperimentConfig:
     risk               → 위험 기준 (risk_threshold, generalize_threshold, tau_commit). Fuzzer 피드백도 risk_threshold를 쓴다
     gate               → 공개 게이트 설정 (고쳐 쓰기 횟수, 거절 문장)
     max_stale_turns    → k 변화 없는 턴이 이만큼 이어지면 새 Seed
+    restrict_seeds_to_counted_qis → 백엔드가 k에 넣는 QI를 노리는 Seed만 고를지 (기본 True)
     target / extractor / rewriter → 각 LLM 호출의 prompt 버전·temperature
     output_root        → 결과를 둘 상위 폴더 (기본 <프로젝트>/runs)
     """
@@ -79,6 +80,7 @@ class ExperimentConfig:
     risk: RiskConfig = RiskConfig()
     gate: GateConfig = GateConfig()
     max_stale_turns: int | None = 2
+    restrict_seeds_to_counted_qis: bool = True
     target: TargetConfig = TargetConfig()
     extractor: ExtractorConfig = ExtractorConfig()
     rewriter: RewriterConfig = RewriterConfig()
@@ -187,24 +189,10 @@ def run_experiment(
     output : 세션 결과 목록 (target 순서 × 갈래 순서)
     """
     engine = engine or build_risk_engine(config.backend, population, config.risk)
-    extractor = QIExtractor(client, config.extractor)
-    parts = SessionParts(
-        target=TargetResponder(retriever, client, config.target),
-        extractor=extractor,
-        normalizer=engine.normalizer,
-        gate=ReleaseGate(extractor, engine.normalizer, ResponseRewriter(client, config.rewriter), config.gate),
-    )
-
-    model = getattr(client, "model", None)
-    logger = RunLogger(
-        config.run_dir,
-        experiment_id=config.experiment_id,
-        risk_config=config.risk,
-        population_size=population.size,
-        model=model,
-        generation_config=f"target={config.target.prompt_version};temp={config.target.temperature}",
-    )
-    logger.write_config(_describe_run(config, population, retriever, registry, model, settings_description, engine))
+    parts = build_session_parts(config, client, retriever, engine)
+    logger = build_run_logger(config, client, population)
+    logger.write_config(describe_run(config, population, retriever, registry,
+                                     getattr(client, "model", None), settings_description, engine))
 
     fuzzer_config = FuzzerConfig(risk_threshold=config.risk.risk_threshold,
                                  max_stale_turns=config.max_stale_turns)
@@ -217,6 +205,7 @@ def run_experiment(
                 engine.new_session(target_id, session_id),
                 FuzzerAdapter(SeedSelector(registry, rng_seed=config.rng_seed), client, fuzzer_config),
                 arm,
+                restrict_seeds_to_counted_qis=config.restrict_seeds_to_counted_qis,
             )
 
             def handle(record: TurnRecord, target_id: str = target_id, arm: Arm = arm) -> None:
@@ -230,11 +219,36 @@ def run_experiment(
     return results
 
 
+def build_session_parts(config: ExperimentConfig, client: Any, retriever: Retriever,
+                        engine: RiskEngine) -> SessionParts:
+    """세션들이 함께 쓰는 구성 요소(Target, 추출기, 정규화기, 공개 게이트)를 만든다. 재실행(replay.py)도 이것을 쓴다."""
+    extractor = QIExtractor(client, config.extractor)
+    return SessionParts(
+        target=TargetResponder(retriever, client, config.target),
+        extractor=extractor,
+        normalizer=engine.normalizer,
+        gate=ReleaseGate(extractor, engine.normalizer, ResponseRewriter(client, config.rewriter), config.gate),
+    )
+
+
+def build_run_logger(config: ExperimentConfig, client: Any, population: ReferencePopulation,
+                     **logger_options: Any) -> RunLogger:
+    return RunLogger(
+        config.run_dir,
+        experiment_id=config.experiment_id,
+        risk_config=config.risk,
+        population_size=population.size,
+        model=getattr(client, "model", None),
+        generation_config=f"target={config.target.prompt_version};temp={config.target.temperature}",
+        **logger_options,
+    )
+
+
 # ──────────────────────────────────────────────────────────────
 # run 설정 기록
 # ──────────────────────────────────────────────────────────────
 
-def _describe_run(config: ExperimentConfig, population: ReferencePopulation, retriever: Retriever,
+def describe_run(config: ExperimentConfig, population: ReferencePopulation, retriever: Retriever,
                   registry: SeedRegistry, model: str | None,
                   settings_description: dict[str, Any] | None, engine: RiskEngine) -> dict[str, Any]:
     """재현에 필요한 설정을 한곳에 모은다 (D1: 모든 run에 version 집합 기록)."""
@@ -259,6 +273,7 @@ def _describe_run(config: ExperimentConfig, population: ReferencePopulation, ret
         },
         "fuzzer": {
             "max_stale_turns": config.max_stale_turns,
+            "restrict_seeds_to_counted_qis": config.restrict_seeds_to_counted_qis,
             "system_prompt_file": str(FUZZER_SYSTEM_PROMPT_FILE.relative_to(PROJECT_ROOT)),
             "system_prompt_sha256": _sha256(FUZZER_SYSTEM_PROMPT_FILE),
         },

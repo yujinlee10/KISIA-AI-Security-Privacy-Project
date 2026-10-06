@@ -35,7 +35,9 @@ from qi_extractor.schema import (
 BASE_DIR = Path(__file__).resolve().parent
 PROMPT_DIR = BASE_DIR / "prompts"
 
-DEFAULT_PROMPT_VERSION = "extractor_system_v1"
+# v1: value_en을 "영어로 옮긴 짧은 표현"으로만 요구. v2: QI별 표준 영어 형식을 요구 (정규화 실패를 줄이기 위함).
+# 2026-10-05 실제 실행에서 "coding job", "Small quiet town"처럼 표에 대조할 수 없는 value_en이 나와 v2를 만들었다.
+DEFAULT_PROMPT_VERSION = "extractor_system_v2"
 
 QUESTION_SECTION_HEADER = "[질문]"
 RESPONSE_SECTION_HEADER = "[응답]"

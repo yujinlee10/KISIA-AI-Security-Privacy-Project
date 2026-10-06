@@ -165,7 +165,7 @@ def test_run_config_records_versions_without_secrets(run):
     assert data["arms"] == ["C0", "C1", "C1S"]
     assert data["backend"]["name"] == "risk_defender" and data["backend"]["qi_in_k"] == 5
     assert data["risk"] == {"risk_threshold": 3, "generalize_threshold": 5, "k_req": 4, "tau_commit": None}
-    assert data["prompts"] == {"target": "target_system_v1", "extractor": "extractor_system_v1",
+    assert data["prompts"] == {"target": "target_system_v1", "extractor": "extractor_system_v2",
                                "rewriter": "rewriter_system_v1"}
     assert data["population"]["size"] == 8
     assert len(data["seed_registry"]["sources"]) == 2 and data["seed_registry"]["mode"] == "development"

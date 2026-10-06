@@ -27,7 +27,7 @@
 | --- | --- |
 | `model.py` | node와 부모 관계, 조상·자손 조회, 구조 검사, 내용 해시 |
 | `tables.py` | 국가 표(76개), 주·구성국 → 국가 표, 도시 표기 갈림, EDU·INC·REL·SEX node |
-| `isco.py`, `data/occp_alias_v0.1.csv` | ISCO-08 그룹 이름, 직업 표기 173종 → ISCO 코드 |
+| `isco.py`, `data/occp_alias_v0.1.csv` | ISCO-08 그룹 이름, 직업 표기 206종 → ISCO 코드 |
 | `builder.py` | 위 표와 기준 집단의 도시 목록으로 온톨로지 생성 (버전 `d1-core-0.1`) |
 | `parsing.py` | 한국어·영어 표현 → node. 기준 집단 매핑과 실행 중 정규화가 같은 규칙을 씀 |
 | `mapper.py` | 기준 집단 profile → node, 매핑 보고 |
@@ -71,7 +71,7 @@
 
 | 항목 | 지금 정한 방식 | 확인할 점 |
 | --- | --- | --- |
-| 직업 → ISCO 코드 | 173행 기계 초안. H 116행, M 36행, L 21행 | M·L 57행의 코드. `python -m ontology --show-review`로 목록 확인 |
+| 직업 → ISCO 코드 | 206행 기계 초안. H 132행, M 49행, L 25행 (Part 8에서 "developer", "coder"처럼 응답에 자주 나오는 넓은 표현 33행 추가) | M·L 74행의 코드. `python -m ontology --show-review`로 목록 확인 |
 | 구분이 안 되는 직업 | 뒷받침되는 상위 코드에서 멈춤 (예: teacher → 23, engineer → 21) | 상위 코드로 둔 사람은 하위 코드 조건에 걸리지 않음. 이 처리가 맞는지 |
 | 은퇴·분류 불가 | ISCO 밖의 보조 node `OCCP:X` (6명) | D1은 자체 분류를 금지함. 별도 처리 방식이 필요한지 |
 | "retired", "part-time" 등 수식어 | 떼고 직업만 대조 | 은퇴 여부를 정보로 볼지 |

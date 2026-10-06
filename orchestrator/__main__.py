@@ -28,6 +28,9 @@ from orchestrator.experiment import (
 )
 from orchestrator.release_gate import ARM_LABELS, Arm, GateConfig
 from orchestrator.session import SessionResult, TurnRecord
+from qi_extractor.extractor import DEFAULT_PROMPT_VERSION as DEFAULT_EXTRACTOR_PROMPT
+from qi_extractor.extractor import ExtractorConfig
+from target_llm.responder import TargetConfig
 from target_llm.corpus import PersonaCorpus
 from target_llm.retriever import PersonaScopeRetriever
 
@@ -46,7 +49,14 @@ def main() -> None:
         risk=RiskConfig(risk_threshold=args.threshold,
                         generalize_threshold=max(args.generalize_threshold, args.threshold)),
         gate=GateConfig(max_defense_rounds=args.defense_rounds),
+        restrict_seeds_to_counted_qis=not args.all_seeds,
+        target=TargetConfig(temperature=None if args.temperature < 0 else args.temperature),
+        extractor=ExtractorConfig(prompt_version=args.extractor_prompt),
     )
+
+    if (config.run_dir / "trace.jsonl").exists():
+        print(f"주의: {config.run_dir}에 이전 실행 기록이 있습니다. 이번 결과가 그 뒤에 이어 붙습니다. "
+              "섞이지 않게 하려면 지금 멈추고(Ctrl-C) --experiment-id를 바꿔 다시 실행하세요.")
 
     settings = get_settings()
     registry = SeedRegistry.load()
@@ -79,7 +89,13 @@ def main() -> None:
     if any(result.unresolved_released for result in results):
         print("미해석: 공개됐지만 정규화하지 못해 k에 반영되지 않은 관찰 수입니다. "
               "많으면 k가 실제보다 크게 나옵니다 (trace.jsonl의 released_observations에서 확인).")
+    archived = sum(1 for result in results if result.first_violation_turn(config.risk.k_req) is not None)
     print(f"결과 폴더: {config.run_dir}")
+    print(f"위험 경로 보관: {archived}건 (실행 중 추정 기준, 검증 전)")
+    print(f"다음 단계: python -m validation {config.experiment_id}    # 정답 대조 (LLM 호출 없음)")
+    print(f"           python -m orchestrator.report {config.experiment_id}    # 집계 표")
+    if archived:
+        print(f"           python -m orchestrator.replay --source {config.experiment_id}    # 보관된 질문 재실행 (LLM 호출)")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -100,6 +116,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--rng-seed", type=int, default=42, help="Seed 선택 난수")
     parser.add_argument("--defense-rounds", type=int, default=GateConfig().max_defense_rounds,
                         help="응답 고쳐 쓰기 최대 횟수")
+    parser.add_argument("--temperature", type=float, default=0.0,
+                        help="Target 응답 temperature (기본 0: 갈래 간 응답 차이를 줄인다. 음수를 주면 서버 기본값)")
+    parser.add_argument("--all-seeds", action="store_true",
+                        help="백엔드가 k에 넣지 않는 QI를 묻는 Seed도 고른다 (기본은 k에 넣는 QI의 Seed만)")
+    parser.add_argument("--extractor-prompt", default=DEFAULT_EXTRACTOR_PROMPT,
+                        help="추출기 prompt 버전 (qi_extractor/prompts/ 안의 파일 이름)")
     parser.add_argument("--experiment-id", default=None, help="결과 폴더 이름 (기본: poc_날짜_시각)")
     return parser.parse_args()
 

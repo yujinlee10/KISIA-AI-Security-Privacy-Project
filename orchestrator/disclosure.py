@@ -51,14 +51,14 @@ class DisclosureLedger:
         return {qi: merged[qi] for qi in QI_TYPES if qi in merged}
 
 
-def state_id(disclosed: Mapping[str, str]) -> str:
+def state_id(committed: Mapping[str, Any]) -> str:
     """
-    input : disclosed (DisclosureLedger.view 결과)
-    output : 같은 공개 상태면 같은 문자열이 나오는 짧은 ID (evaluation 로그 state_id)
+    input : committed (State에 commit된 {QI → 값})
+    output : 같은 State면 같은 문자열이 나오는 짧은 ID (evaluation 로그 state_id)
     """
-    if not disclosed:
+    if not committed:
         return EMPTY_STATE_ID
-    key = "|".join(f"{qi}={disclosed[qi]}" for qi in QI_TYPES if qi in disclosed)
+    key = "|".join(f"{qi}={committed[qi]}" for qi in QI_TYPES if qi in committed)
     return "S-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
 
 

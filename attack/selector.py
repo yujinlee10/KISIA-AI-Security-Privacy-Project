@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 from attack.conditions import evaluate
@@ -36,11 +36,20 @@ class AttackStateView:
     refinable_qis
     → 공개된 값보다 더 구체적인 값이 남아 있는 QI (O2 Seed 조건용). 공개된 값과 계층만으로 정해지는 정보다.
       None이면 attack.conditions의 기본 규칙으로 판단한다
+    unresolved_qis
+    → 공개는 됐지만 표준 값으로 풀지 못한 QI (committed_qis에는 응답의 표현 그대로 들어 있다).
+      O2 Seed가 "방금 말한 그 값을 더 구체적으로" 물을 수 있게 한다. 공개된 응답에서만 나온 정보다
+    target_qi_scope
+    → 이 QI를 노리는 Seed만 고른다. None이면 제한 없음.
+      위험 계산이 5개 QI만 세는 설정에서 소득·성별·출생지를 묻는 Seed에 턴을 쓰면 무엇이 나와도 k가 줄지 않는다.
+      어떤 QI를 세는지는 실험 설정이지 대상에 대한 정보가 아니다
     k·GT·Raw Candidate 필드는 일부러 두지 않는다 (D1 Part III 정보 경계 금지사항).
     """
     committed_qis: Mapping[str, str] = field(default_factory=dict)
     prior_turns: int = 0
     refinable_qis: frozenset[str] | None = None
+    target_qi_scope: frozenset[str] | None = None
+    unresolved_qis: frozenset[str] = frozenset()
 
 
 class SeedSelector:
@@ -56,13 +65,13 @@ class SeedSelector:
         input : view
         output : 조건을 만족하는 Seed (레지스트리 순서 유지)
         """
-        return tuple(
-            seed for seed in self._registry.seeds
-            if evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis)
-        )
+        return tuple(seed for seed in self._registry.seeds if self.is_applicable(seed, view))
 
     def is_applicable(self, seed: Seed, view: AttackStateView) -> bool:
-        return evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis)
+        if view.target_qi_scope is not None and seed.target_qi not in view.target_qi_scope:
+            return False
+        return evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis,
+                        view.unresolved_qis)
 
     def choose(self, view: AttackStateView) -> tuple[Seed | None, int]:
         """
@@ -70,8 +79,11 @@ class SeedSelector:
         output : (고른 Seed 또는 None, 조건을 만족한 Seed 수)
 
         만족하는 Seed가 없으면 None이다. 호출 측은 이를 D1 종료 사유 NO_APPLICABLE_ACTION으로 처리한다.
+        target_qi_scope 안에서 고를 Seed가 없으면 범위 밖 Seed로 넘어간다 (범위는 우선순위이지 종료 조건이 아니다).
         """
         candidates = self.applicable(view)
+        if not candidates and view.target_qi_scope is not None:
+            candidates = self.applicable(replace(view, target_qi_scope=None))
         if not candidates:
             return None, 0
         return self._rng.choice(candidates), len(candidates)

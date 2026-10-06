@@ -7,7 +7,12 @@
 #   experiment.py   : target × 실험 갈래로 세션을 조립. 위험 계산 백엔드(risk_defender / ontology)를 고른다
 #   session.py      : 세션 한 개(target 1명 × 조건 1개)의 턴 루프
 #   run_log.py      : 실행 기록 — evaluation(이정민 파트) CSV + trusted trace JSONL + run 설정
+#   archive.py      : 위험 경로 보관소 — 실행 중 k가 요구 익명성 아래로 내려간 세션의 질문 순서 (D1 Stage 10)
+#   replay.py       : Exact Replay — 보관된 질문을 새 세션에서 그대로 재실행 (D1 Stage 13). python -m orchestrator.replay
+#   report.py       : 실행 결과 집계 표. python -m orchestrator.report <experiment_id>
 #   __main__.py     : python -m orchestrator --target pers1 --arms C0 C1 --turns 5
+#
+# 정답과 대조하는 사후 검증(k_val)은 이 패키지 밖의 validation/ 에 있다. 여기서는 import하지 않는다.
 #
 # 한 턴의 순서 (D1 Part III §4, HANDOFF §4.1)
 #   1) Fuzzer 어댑터가 공개된 정보만 보고 질문을 만든다
@@ -19,4 +24,4 @@
 #
 # 실험 갈래
 #   C0 : Defender 없음 (기준선)        C1 : 공개 전 Defender        C1S : 무상태 Defender (대조군)
-#   C2·C3(경량 언러닝 규칙 주입)은 POC 이후 파트에서 추가한다.
+#   C2·C3(경량 언러닝 규칙 생성·주입)은 아직 없다. 보관소의 검증된 경로가 그 입력이 된다.

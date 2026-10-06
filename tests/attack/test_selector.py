@@ -70,3 +70,16 @@ def test_bind_previously_disclosed_value(registry):
 def test_bind_without_disclosed_value_fails(registry):
     with pytest.raises(BindingError):
         selector(registry).bind(registry.by_id("LOC-S1-O2-001"), AttackStateView({}, 1))
+
+
+# ── 노릴 QI 범위 제한 ─────────────────────────────────────
+
+def test_target_qi_scope_keeps_only_seeds_for_those_qis(registry):
+    scope = frozenset({"AGE", "LOC", "OCCP", "EDU", "REL"})
+    seeds = selector(registry).applicable(AttackStateView({}, prior_turns=0, target_qi_scope=scope))
+    assert seeds and {s.target_qi for s in seeds} <= scope
+    assert len(seeds) < len(selector(registry).applicable(AttackStateView({}, prior_turns=0)))
+
+
+def test_empty_scope_leaves_no_seed(registry):
+    assert selector(registry).applicable(AttackStateView({}, 0, target_qi_scope=frozenset())) == ()

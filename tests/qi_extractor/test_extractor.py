@@ -118,12 +118,12 @@ def test_prompt_separates_question_and_response():
 
     assert call["user_prompt"].startswith(QUESTION_SECTION_HEADER)
     assert f"{RESPONSE_SECTION_HEADER}\n{RESPONSE}" in call["user_prompt"]
-    assert call["system_prompt"] == load_prompt("extractor_system_v1")
+    assert call["system_prompt"] == load_prompt("extractor_system_v2")
     assert call["temperature"] == 0.0
 
 
 def test_system_prompt_lists_all_eight_qi_codes():
-    prompt = load_prompt("extractor_system_v1")
+    prompt = load_prompt("extractor_system_v2")
     for code in QI_TYPES:
         assert f"- {code}:" in prompt
 
@@ -137,7 +137,7 @@ def test_metadata_is_recorded():
     result, _ = extract(llm(as_output(item())))
     log = result.to_log_dict()
 
-    assert log["prompt_version"] == "extractor_system_v1"
+    assert log["prompt_version"] == "extractor_system_v2"
     assert log["response_model"] == "fake-model"
     assert log["attempts"] == 1
     assert (log["input_tokens"], log["output_tokens"]) == (200, 50)

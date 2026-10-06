@@ -60,7 +60,8 @@ class TurnRecord:
     raw_normalized          → raw candidate 관찰의 정규화 결과 (위험 계산용)
     release                 → 공개 게이트 결정 (공개된 응답·관찰 포함)
     commit                  → State 반영 결과 (k_run 전후)
-    disclosed_before/after  → 턴 전후 공개 상태 (State 값 형식 그대로)
+    committed_before        → 턴 시작 때의 State (턴 뒤의 State는 commit.state_after)
+    disclosed_before/after  → 턴 전후 공개 상태 (State + State에 못 들어간 공개분)
     attack_view             → 질문을 만들 때 공격 쪽에 보여 준 공개 상태 (사람이 읽는 표현)
     coverage                → 이 턴의 Coverage 판정 (D1 Stage 9)
     relation                → 이번 턴 target_qi의 QI 관계 (NEW/SAME/DESCENDANT/ANCESTOR/INCOMPATIBLE)
@@ -74,6 +75,7 @@ class TurnRecord:
     raw_normalized: tuple[NormalizedObservation, ...]
     release: ReleaseDecision
     commit: CommitOutcome
+    committed_before: dict[str, Any]
     disclosed_before: dict[str, str]
     disclosed_after: dict[str, str]
     attack_view: dict[str, str]
@@ -81,13 +83,15 @@ class TurnRecord:
     relation: str
     feedback_status: str
 
+    # State ID는 State에 commit된 값만으로 만든다 (D1: canonical committed QI만 StateKey에 포함).
+    # Coverage의 State 수와 같은 기준이다. 정규화하지 못한 공개분은 disclosed_*에만 남는다.
     @property
     def state_id_before(self) -> str:
-        return state_id(self.disclosed_before)
+        return state_id(self.committed_before)
 
     @property
     def state_id_after(self) -> str:
-        return state_id(self.disclosed_after)
+        return state_id(self.commit.state_after)
 
     def to_trace_dict(self) -> dict[str, Any]:
         return {
@@ -153,11 +157,17 @@ class SessionRunner:
     """
 
     def __init__(self, parts: SessionParts, risk_session: RiskBackend,
-                 fuzzer: FuzzerAdapter, arm: Arm | Condition) -> None:
+                 fuzzer: FuzzerAdapter, arm: Arm | Condition, *, restrict_seeds_to_counted_qis: bool = True) -> None:
+        """
+        restrict_seeds_to_counted_qis
+        → 위험 계산이 세는 QI를 노리는 Seed만 고르게 할지. 끄면 8개 QI 전부가 대상이다
+          (risk_defender 백엔드에서는 소득·성별·출생지 질문이 k를 줄이지 못하는 턴이 된다)
+        """
         self._parts = parts
         self._risk = risk_session
         self._fuzzer = fuzzer
         self._arm = arm if isinstance(arm, Arm) else Arm(arm)
+        self._seed_scope = risk_session.counted_qis if restrict_seeds_to_counted_qis else None
         self._ledger = DisclosureLedger()
         self._coverage = CoverageRegistry()
 
@@ -203,7 +213,9 @@ class SessionRunner:
         attack_view = {qi: (self._risk.display_value(qi, value) if qi in committed_before else value)
                        for qi, value in disclosed_before.items()}
         attack = self._fuzzer.next_query(AttackStateView(
-            attack_view, prior_turns=turn - 1, refinable_qis=self._risk.refinable_qis))
+            attack_view, prior_turns=turn - 1, refinable_qis=self._risk.refinable_qis,
+            target_qi_scope=self._seed_scope,
+            unresolved_qis=frozenset(qi for qi in disclosed_before if qi not in committed_before)))
 
         # 2) Target 응답 (raw candidate)
         target = self._parts.target.respond(target_id, attack.query)
@@ -247,6 +259,7 @@ class SessionRunner:
             raw_normalized=raw_normalized,
             release=release,
             commit=commit,
+            committed_before=dict(committed_before),
             disclosed_before=disclosed_before,
             disclosed_after=disclosed_after,
             attack_view=attack_view,
