@@ -210,9 +210,9 @@ def test_report_flags_interrupted_and_duplicated_runs(tmp_path, registry):
     lines = trace.read_text(encoding="utf-8").splitlines()
     trace.write_text("\n".join(lines + lines + lines[:2]) + "\n", encoding="utf-8")   # 다시 실행 + 중간에 멈춘 세션
     report = load_run(config.run_dir)
-    assert len(report.sessions) == 4 and report.unfinished_turns == 2
+    assert len(report.sessions) == 2 and report.superseded == 2 and report.unfinished_turns == 2
     text = render(report)
-    assert "세션 요약 없이 끝난 턴이 2개" in text and "두 번 이상" in text
+    assert "세션 요약 없이 끝난 턴이 2개" in text and "앞의 세션 2개는 집계에서 뺐습니다" in text
 
 
 def test_report_lists_unresolved_released_observations(tmp_path, registry):

@@ -21,15 +21,17 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from adapters.fuzzer_adapter import FUZZER_SYSTEM_PROMPT_FILE, FuzzerAdapter, FuzzerConfig
 from adapters.replay_fuzzer import ReplayFuzzer, queries_of
 from orchestrator.shared_raw import SharedExtractor, SharedTarget
+from orchestrator.trace_reader import arm_of, iter_sessions
 from adapters.ontology_risk import OntologyRiskSession, build_population_index
 from adapters.risk_adapter import ReferencePopulation, RiskBackend, RiskConfig, RiskSession
 from attack.registry import SeedRegistry
@@ -74,6 +76,8 @@ class ExperimentConfig:
                          같은 질문의 원 응답과 그 추출 결과도 함께 쓴다 (Target은 질문만 보고 답하므로 같아야 맞다).
                          갈래 간 차이가 공개 게이트에서만 생기게 하기 위한 설정이다.
                          나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않으므로 적응형 공격의 결과는 아니다
+    resume             → True면 같은 experiment_id의 이전 기록에서 모든 갈래가 끝난 대상은 건너뛴다.
+                         중간에 멈춘 대상은 첫 갈래부터 다시 돌린다 (집계는 대상·갈래마다 마지막으로 끝난 세션만 쓴다)
     fuzzer             → 질문 생성 설정 (자료 범위 안내, 변형 결과 검사, QI 고른 배분). None이면 기본값
     target / extractor / rewriter → 각 LLM 호출의 prompt 버전·temperature
     output_root        → 결과를 둘 상위 폴더 (기본 <프로젝트>/runs)
@@ -89,6 +93,7 @@ class ExperimentConfig:
     max_stale_turns: int | None = 2
     restrict_seeds_to_counted_qis: bool = True
     paired_questions: bool = False
+    resume: bool = False
     fuzzer: FuzzerConfig | None = None
     target: TargetConfig = TargetConfig()
     extractor: ExtractorConfig = ExtractorConfig()
@@ -200,12 +205,25 @@ def run_experiment(
     engine = engine or build_risk_engine(config.backend, population, config.risk)
     parts = build_session_parts(config, client, retriever, engine)
     logger = build_run_logger(config, client, population)
-    logger.write_config(describe_run(config, population, retriever, registry,
-                                     getattr(client, "model", None), settings_description, engine))
+    description = describe_run(config, population, retriever, registry,
+                               getattr(client, "model", None), settings_description, engine)
+    done = completed_targets(logger.trace_path, [arm.label for arm in config.arms]) if config.resume else set()
+    if config.resume and logger.config_path.exists():
+        # 이어서 돌릴 때는 처음 설정을 덮어쓰지 않고, 언제 무엇을 건너뛰고 이어 돌렸는지만 덧붙인다
+        previous = json.loads(logger.config_path.read_text(encoding="utf-8"))
+        previous.setdefault("resumed", []).append({
+            "at": description["started_at"], "skipped_targets": sorted(done),
+            "target_ids": description["target_ids"]})
+        previous["target_ids"] = list(dict.fromkeys([*previous.get("target_ids", []), *description["target_ids"]]))
+        logger.write_config(previous)
+    else:
+        logger.write_config(description)
 
     fuzzer_config = fuzzer_config_of(config)
     results: list[SessionResult] = []
     for target_id in config.target_ids:
+        if target_id in done:
+            continue
         lead: SessionResult | None = None       # paired_questions일 때 질문을 만든 첫 갈래의 결과
         for arm in config.arms:
             session_id = f"{config.experiment_id}-{target_id}-{arm.label}"
@@ -240,6 +258,20 @@ def run_experiment(
             if lead is None:
                 lead = result
     return results
+
+
+def completed_targets(trace_path: Path, arm_labels: Sequence[str]) -> set[str]:
+    """
+    input : trace_path (이전 실행의 trace.jsonl. 없어도 된다), arm_labels (이번에 돌릴 갈래)
+    output : 그 갈래들이 모두 끝까지 기록된(session_end가 있는) 대상 ID
+    """
+    if not Path(trace_path).exists():
+        return set()
+    finished: dict[str, set[str]] = {}
+    for session in iter_sessions(trace_path):
+        if session.finished and session.head.get("session_key") is None:
+            finished.setdefault(session.head["target_id"], set()).add(arm_of(session.head))
+    return {target_id for target_id, arms in finished.items() if set(arm_labels) <= arms}
 
 
 def fuzzer_config_of(config: ExperimentConfig) -> FuzzerConfig:

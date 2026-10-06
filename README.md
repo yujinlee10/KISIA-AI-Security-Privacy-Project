@@ -9,14 +9,15 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 697개 통과 (LLM 호출은 가짜 client 사용) |
+| 단위·통합 테스트 | 721개 통과 (LLM 호출은 가짜 client 사용) |
 | 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
 | 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
 | Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
 | 위험 경로 보관 (D1 Stage 10) | 실행 중 k가 k_req 아래로 내려갔거나 0이 된 세션의 질문 순서를 `high_risk_paths.jsonl`에 기록 |
 | 정답(GT) 대조 평가 `k_val` | `python -m validation` (실행이 끝난 뒤 따로 돌림. 실행 중 코드는 정답을 읽지 않음) |
 | Exact Replay (D1 Stage 13) | `python -m orchestrator.replay` (보관된 질문을 새 세션에서 그대로 재실행) |
-| 실행 집계 | `python -m orchestrator.report` |
+| 실행 집계 | `python -m orchestrator.report` (대상이 여럿이면 대상별 표와 갈래별 위반 조합 포함) |
+| 대상 선정 | `python -m validation.select_targets` (사람 라벨로 층을 나눠 추첨) |
 | C2·C3 (경량 언러닝 규칙 생성·주입) | 미구현 |
 | 변형 재공격 (D1 Stage 14), Interesting 질문의 Seed 승격 | 미구현 |
 
@@ -101,7 +102,7 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 697 passed
+python -m pytest -q                     # 721 passed
 python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 
@@ -128,6 +129,9 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `--experiment-id` | `poc_날짜_시각` | 결과 폴더 이름 |
 | `--temperature` | `0` | Target 응답의 temperature. 갈래 간 차이가 응답의 우연한 흔들림에서 오지 않게 고정한다. 음수를 주면 서버 기본값 |
 | `--all-seeds` | 꺼짐 | 켜면 k에 들어가지 않는 QI를 묻는 Seed도 고른다 (기본은 백엔드가 세는 QI를 노리는 Seed만) |
+| `--targets-file` | 없음 | 대상 목록 파일(`python -m validation.select_targets` 결과). 주면 `--target` 대신 쓴다 |
+| `--resume` | 꺼짐 | 같은 `--experiment-id`의 이전 기록에서 모든 갈래가 끝난 대상은 건너뛰고 나머지만 돌린다 |
+| `--no-residual-check` | 꺼짐 | 고쳐 쓴 응답에 지운 값의 근거 문구가 남았는지 검사하지 않는다 |
 | `--paired` | 꺼짐 | 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던진다. 갈래를 비교할 때는 켜는 것을 권장 |
 | `--plain-mutation` | 꺼짐 | 질문 생성의 보정(Target 자료 범위 안내, 변형 결과의 자료 출처 검사, QI 고른 배분)을 끈다. 이전 동작과 비교할 때만 사용 |
 | `--min-confidence` | 없음 | 추출기 확신도(1~5)가 이 값보다 낮은 관찰은 State에 넣지 않는다 |
@@ -135,6 +139,31 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `--extractor-prompt` | `extractor_system_v2` | 추출 프롬프트 버전. v2는 값마다 표준 영어 표기(`value_en`)를 요구한다. 이전 동작은 `extractor_system_v1` |
 
 턴당 LLM 호출은 질문 생성 1회, Target 1회, 추출 1회이고, C1에서 Defender가 개입하면 재작성과 재추출이 1회씩 더 듭니다. 기준 집단 30만 명 적재에 수 초, 메모리 약 500MB가 필요합니다.
+
+### 여러 대상으로 돌리기
+
+기본 대상은 `pers1` 한 명입니다. 파이프라인 확인용이고, 결과를 말하려면 여러 대상이 필요합니다.
+
+```bash
+# 1) 대상 고르기 (LLM 호출 없음). runs/target_selection.json에 저장된다
+python -m validation.select_targets --count 10 --include pers1
+
+# 2) 실행. 중간에 멈추면 같은 명령에 --resume을 붙여 이어 돌린다
+python -m orchestrator --targets-file runs/target_selection.json --arms C0 C1 C1S \
+    --backend ontology --turns 12 --paired --experiment-id run_multi10
+
+# 3) 정답 대조와 집계
+python -m validation run_multi10
+python -m orchestrator.report run_multi10 --targets-file runs/target_selection.json
+```
+
+**대상을 고르는 기준.** SynthPAI에는 글마다 사람이 읽고 적은 추정값(`reviews.human`)이 있습니다. 대상마다 그 추정값 중 실제 값과 맞는 것만 모아, 전부 알았을 때 기준 집단에서 몇 명으로 좁혀지는지(`k_reachable`)를 셉니다. `k_reachable`이 k_req보다 작으면 "단서 충분(rich)", 아니면 "단서 부족(sparse)" 층입니다. 30만 명 기준으로 300명 중 56명이 rich입니다. 기본 설정은 rich 70%, sparse 30%로 추첨합니다(`--rich-share`, `--seed`).
+
+두 층을 섞는 이유는 rich만 고르면 "Defender가 없으면 뚫린다"는 결과가 부풀려지고, sparse만 고르면 Defender가 개입할 일이 없기 때문입니다. `k_reachable`은 층을 나누는 기준일 뿐 결과 수치가 아닙니다. 사람 라벨은 글 하나만 보고 적은 것이라 Target LLM이 여러 글을 종합해 내놓는 답과 다를 수 있습니다.
+
+이 도구는 정답 profile을 읽으므로 `validation/` 아래에 있고, 실행 중 코드에는 대상 ID만 넘어갑니다.
+
+**비용.** `--paired`에서는 대상 1명에 질문 생성·Target·추출이 턴마다 한 번씩이라 12턴이면 약 36회이고, Defender가 개입한 턴마다 재작성과 재추출이 더 듭니다. 실행을 시작할 때 예상 호출 수가 출력됩니다.
 
 ### 질문이 Target에 맞도록 하는 장치
 
@@ -229,10 +258,11 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 | 추출 프롬프트 | `extractor_system_v2` | 실제 모델로 v1과 비교 검증 전. 정규화 실패가 줄었는지는 `report.md`의 미해석 건수로 확인 |
 | State ID | State에 반영된 값 기준 | Part 7까지는 공개 기록 기준이었음. 이전 실행의 `state_id`와는 값이 다름 |
 | 지역·나이 해석 | 여러 지역을 나열한 표현은 미해석, 권역 이름은 국가까지 | "중서부, 스위스"는 정하지 않고 "미국 중서부"는 미국으로 읽음. 원문 범위가 표준 표기보다 넓은 나이는 10년 구간까지만 인정 |
-| 대상 수 | 실행 명령의 기본값은 pers1 한 명 | 파이프라인 확인용. 결과를 주장하려면 `--target`에 여러 명을 주어야 함. 대상 선정 기준은 미정 |
+| 대상 수 | 실행 명령의 기본값은 pers1 한 명 | 파이프라인 확인용. 여러 대상은 `--targets-file`로 준다. 본 실험의 대상 수와 층 비율은 팀 결정 필요 |
 | 추출 근거 검증 | 근거 문구 중 하나라도 응답에 있으면 관찰을 인정 | 이전에는 하나라도 못 찾으면 관찰 전체를 버림. 못 찾은 문구는 trace의 `unverified_spans`에 기록 |
 | 추측성 값 | State에 그대로 반영 | Target이 근거가 약한 추정(소득, 관계 상태 등)을 답하면 틀린 값이 State에 들어가고, 이후 Defender 판정이 그 State를 기준으로 이뤄짐. 실행 후 `k_val`로 가려냄. `--min-confidence`로 줄일 수 있으나 맞는 값도 함께 빠질 수 있음 |
 | State 충돌 | 먼저 들어간 값 유지 | 나중에 더 확실한 값이 나와도 바뀌지 않음. 정책 결정 필요 |
+| 재작성 뒤 잔여 단서 | 지운 값의 근거 문구가 글자 그대로 남으면 다시 고침 | 재추출이 놓친 인용문을 막기 위함. 한 문구가 지울 값과 남길 값의 근거를 겸하면 남길 값의 근거도 빠진다. 표현을 바꿔 남긴 단서는 잡지 못한다 |
 | 검증의 범위 | State에 들어간 QI만 | 정규화하지 못한 공개분은 `k_val`에도 반영되지 않음 |
 
 ## 브랜치와 커밋 규칙

@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 import time
 
 from adapters.fuzzer_adapter import FuzzerConfig
@@ -22,6 +24,7 @@ from core.config import get_settings
 from core.llm_client import LLMClient
 from orchestrator.archive import should_archive
 from orchestrator.experiment import (
+    completed_targets,
     Backend,
     ExperimentConfig,
     build_risk_engine,
@@ -43,9 +46,10 @@ PREVIEW_CHARS = 300
 
 def main() -> None:
     args = _parse_args()
+    target_ids = load_target_ids(args.targets_file) if args.targets_file else tuple(args.target)
     config = ExperimentConfig(
         experiment_id=args.experiment_id or default_experiment_id(),
-        target_ids=tuple(args.target),
+        target_ids=target_ids,
         arms=tuple(Arm.parse(name) for name in args.arms),
         backend=Backend(args.backend),
         max_turns=args.turns,
@@ -53,19 +57,29 @@ def main() -> None:
         risk=RiskConfig(risk_threshold=args.threshold,
                         generalize_threshold=max(args.generalize_threshold, args.threshold),
                         tau_commit=args.min_confidence),
-        gate=GateConfig(max_defense_rounds=args.defense_rounds),
+        gate=GateConfig(max_defense_rounds=args.defense_rounds,
+                        check_residual_evidence=not args.no_residual_check),
         restrict_seeds_to_counted_qis=not args.all_seeds,
         target=TargetConfig(temperature=None if args.temperature < 0 else args.temperature),
         extractor=ExtractorConfig(prompt_version=args.extractor_prompt),
         rewriter=RewriterConfig(prompt_version=args.rewriter_prompt),
         paired_questions=args.paired,
+        resume=args.resume,
         fuzzer=(FuzzerConfig(target_scope_note=None, out_of_scope_sources=(), balance_qis=False)
                 if args.plain_mutation else None),
     )
 
-    if (config.run_dir / "trace.jsonl").exists():
+    if args.resume:
+        done = completed_targets(config.run_dir / "trace.jsonl", [arm.label for arm in config.arms])
+        left = [target_id for target_id in config.target_ids if target_id not in done]
+        print(f"------ 이어서 실행: 끝난 대상 {len(done)}명은 건너뛰고 {len(left)}명을 돌립니다 "
+              f"({', '.join(left) or '남은 대상 없음'}) ------")
+        if not left:
+            return
+    elif (config.run_dir / "trace.jsonl").exists():
         print(f"주의: {config.run_dir}에 이전 실행 기록이 있습니다. 이번 결과가 그 뒤에 이어 붙습니다. "
-              "섞이지 않게 하려면 지금 멈추고(Ctrl-C) --experiment-id를 바꿔 다시 실행하세요.")
+              "멈춘 실행을 이어 돌리려면 --resume을 붙이고, 새로 돌리려면 --experiment-id를 바꾸세요.")
+    print(estimate_calls(len(config.target_ids), len(config.arms), config.max_turns, config.paired_questions))
 
     settings = get_settings()
     registry = SeedRegistry.load()
@@ -107,9 +121,33 @@ def main() -> None:
         print(f"           python -m orchestrator.replay --source {config.experiment_id}    # 보관된 질문 재실행 (LLM 호출)")
 
 
+def load_target_ids(path: str) -> tuple[str, ...]:
+    """대상 목록 파일에서 ID만 읽는다. 파일의 다른 내용(층, k_reachable)은 실행 중 코드로 넘기지 않는다."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    target_ids = data["target_ids"] if isinstance(data, dict) else data
+    if not target_ids or not all(isinstance(item, str) for item in target_ids):
+        raise ValueError(f"{path}: target_ids가 비어 있거나 문자열 목록이 아닙니다.")
+    return tuple(target_ids)
+
+
+def estimate_calls(targets: int, arms: int, turns: int, paired: bool) -> str:
+    """실행 전 LLM 호출 수 어림 (Defender 개입에 따른 재작성·재추출은 별도)."""
+    sessions = targets * (1 if paired else arms)
+    base = sessions * turns * 3            # 질문 생성 + Target + 추출
+    return (f"------ 예상 LLM 호출: 약 {base:,}회 (대상 {targets}명 × "
+            f"{'질문·원 응답 공유' if paired else f'갈래 {arms}개'} × {turns}턴 × 3) "
+            "+ Defender가 개입한 턴마다 재작성·재추출 ------")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="공격 → 응답 → 추출 → 위험 판정 → 공개 → State 반영을 반복 실행")
     parser.add_argument("--target", nargs="+", default=["pers1"], help="대상 persona (여러 개 가능)")
+    parser.add_argument("--targets-file", default=None,
+                        help="대상 목록 파일 (python -m validation.select_targets가 만든 JSON). 주면 --target 대신 쓴다")
+    parser.add_argument("--resume", action="store_true",
+                        help="같은 --experiment-id의 이전 기록에서 모든 갈래가 끝난 대상은 건너뛰고 나머지만 돌린다")
+    parser.add_argument("--no-residual-check", action="store_true",
+                        help="고쳐 쓴 응답에 지운 값의 근거 문구가 남았는지 검사하지 않는다 (Part 10까지의 동작)")
     parser.add_argument("--arms", "--conditions", dest="arms", nargs="+", default=["C0", "C1"],
                         choices=ARM_LABELS, type=str.upper,
                         help="C0: Defender 없음 / C1: 공개 전 Defender / C1S: 무상태 Defender (대조군)")

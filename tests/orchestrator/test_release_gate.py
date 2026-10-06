@@ -315,3 +315,64 @@ def test_unsupported_conditions(condition):
     gate, session, extractor, _ = build(client)
     with pytest.raises(ValueError):
         release(gate, session, extractor, condition, RAW_ZURICH)
+
+
+# ── 고쳐 쓴 응답에 남은 근거 문구 ─────────────────────────
+
+def leaky_setup(rewritten_texts, **gate_config):
+    """
+    재작성기가 차례로 rewritten_texts를 내놓고, 재추출은 아무것도 뽑지 못하는 상황
+    (추출기가 남은 단서를 놓치는 경우). 원 응답 추출만 정상이다.
+    """
+    from tests.orchestrator.sample_data import extract_from
+
+    outputs = iter(rewritten_texts)
+    calls = {"n": 0}
+
+    def extractor(text):
+        calls["n"] += 1
+        return extract_from(text) if calls["n"] == 1 else '{"observations": []}'
+
+    client = RoleClient([], rewrites=lambda original: next(outputs), extractor=extractor)
+    return (client, *build(client, **gate_config))
+
+
+CLEAN = "거주 지역은 기록에서 확인하기 어렵습니다."
+
+
+def test_leftover_evidence_fails_the_round_even_if_reextraction_misses_it():
+    """1회차 재작성이 '취리히에 거주' 문구를 그대로 두었다. 재추출은 놓쳤지만 통과시키지 않고 다시 고치게 한다."""
+    client, gate, session, extractor, _ = leaky_setup([RAW_ZURICH, CLEAN])
+    decision = release(gate, session, extractor, Condition.C1, RAW_ZURICH)
+
+    first, second = decision.rounds
+    assert first.residual_evidence == ("취리히에 거주",) and not first.floor_satisfied
+    assert second.residual_evidence == () and second.floor_satisfied
+    assert decision.path is ReleasePath.REWRITTEN and decision.released_response == CLEAN
+    assert "취리히에 거주" in client.prompts_of("rewriter")[1]          # 남은 문구를 다시 지시한다
+    assert first.to_log_dict()["residual_evidence"] == ["취리히에 거주"]
+
+
+def test_evidence_left_in_every_round_ends_in_refusal():
+    _, gate, session, extractor, _ = leaky_setup([RAW_ZURICH, RAW_ZURICH])
+    decision = release(gate, session, extractor, Condition.C1, RAW_ZURICH)
+    assert decision.path is ReleasePath.REFUSAL
+    assert decision.refusal_reason is RefusalReason.ROUNDS_EXHAUSTED
+
+
+def test_residual_check_can_be_turned_off():
+    """끄면 재추출 결과만 믿는다 (Part 10까지의 동작). 문구가 남은 응답이 그대로 공개된다."""
+    _, gate, session, extractor, _ = leaky_setup([RAW_ZURICH], check_residual_evidence=False)
+    decision = release(gate, session, extractor, Condition.C1, RAW_ZURICH)
+    assert decision.path is ReleasePath.REWRITTEN and decision.released_response == RAW_ZURICH
+    assert len(decision.rounds) == 1
+
+
+def test_short_evidence_words_are_not_checked():
+    from orchestrator.release_gate import residual_instructions
+    from orchestrator.rewriter import RewriteAction, RewriteInstruction
+
+    item = RewriteInstruction("t1-o1", "SEX", RewriteAction.SUPPRESS, "his", ("his", "never judge a gamer by his day job"), None)
+    (left,) = residual_instructions([item], "this is fine. never judge a gamer by his day job!")
+    assert left.evidence == ("never judge a gamer by his day job",)
+    assert residual_instructions([item], "this is his") == []

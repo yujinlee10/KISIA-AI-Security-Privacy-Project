@@ -70,6 +70,8 @@ class SessionStats:
     reset_reasons: Counter = field(default_factory=Counter)
     rejected_mutations: Counter = field(default_factory=Counter)    # 버린 변형 결과 (사유별)
     questions_from: str | None = None                               # 다른 갈래의 질문을 그대로 쓴 세션이면 그 갈래
+    intervention_reasons: Counter = field(default_factory=Counter)  # Defender가 개입한 이유 (회차별)
+    residual_rounds: int = 0                                        # 지운 값의 근거 문구가 남아 다시 고친 회차 수
     fallbacks: int = 0
     tokens: dict[str, list[int]] = field(default_factory=lambda: {role: [0, 0] for role in ROLES})
     calls: Counter = field(default_factory=Counter)
@@ -113,6 +115,12 @@ class SessionStats:
         self.second_round_turns += len(rounds) >= 2
         for round_item in rounds:
             self.adopted += len(round_item.get("adopted_ids") or [])
+            self.residual_rounds += bool(round_item.get("residual_evidence"))
+            defense = round_item.get("defense") or {}
+            if defense.get("intervened"):
+                logs = defense.get("defense_log") or [{}]
+                reason = logs[0].get("intervention_reason") if isinstance(logs[0], dict) else None
+                self.intervention_reasons[reason or defense.get("action") or "?"] += 1
             rewrite = round_item.get("rewrite")
             if rewrite:
                 self._spend("rewriter", rewrite.get("input_tokens"), rewrite.get("output_tokens"), 1)
@@ -147,11 +155,14 @@ class RunReport:
     sessions: list[SessionStats]
     unfinished_turns: int          # session_end 없이 끝난 턴 수 (중간에 멈춘 실행)
     validated: bool
+    superseded: int = 0            # 같은 대상·갈래를 다시 돌려 앞의 것이 집계에서 빠진 세션 수
+    strata: dict[str, str] = field(default_factory=dict)   # 대상 → 층 (대상 선정 파일을 주었을 때)
 
 
-def load_run(run_dir: str | Path) -> RunReport:
+def load_run(run_dir: str | Path, strata: dict[str, str] | None = None) -> RunReport:
     """
     input : run_dir (runs/<experiment_id>)
+    input(추가) : strata (대상 → 층. 대상 선정 파일에서 읽은 것. 주면 층별 표를 만든다)
     output : RunReport (세션별 집계. validation.jsonl이 있으면 k_val도 붙인다)
     """
     run_dir = Path(run_dir)
@@ -187,7 +198,14 @@ def load_run(run_dir: str | Path) -> RunReport:
                 session.validated = True
         else:
             validated = False
-    return RunReport(config.get("experiment_id") or run_dir.name, config, sessions, unfinished, validated)
+
+    # 같은 대상·갈래가 여러 번 끝났으면 (멈춘 실행을 --resume으로 이어 돌린 경우 등) 마지막 것만 집계한다
+    latest: dict[tuple[Any, ...], SessionStats] = {}
+    for stats in sessions:
+        latest[(stats.target_id, stats.arm, stats.session_key)] = stats
+    kept = [stats for stats in sessions if latest[(stats.target_id, stats.arm, stats.session_key)] is stats]
+    return RunReport(config.get("experiment_id") or run_dir.name, config, kept, unfinished, validated,
+                     superseded=len(sessions) - len(kept), strata=dict(strata or {}))
 
 
 # ── markdown 출력 ─────────────────────────────────────────
@@ -217,10 +235,10 @@ def render(report: RunReport) -> str:
     ])
     if report.unfinished_turns:
         lines += ["", f"주의: 세션 요약 없이 끝난 턴이 {report.unfinished_turns}개 있습니다 (중간에 멈춘 실행). 아래 표에는 넣지 않았습니다."]
-    duplicates = [key for key, count in Counter((s.target_id, s.arm, s.session_key) for s in sessions).items() if count > 1]
-    if duplicates:
-        lines += ["", "주의: 같은 대상·갈래의 세션이 두 번 이상 있습니다 (같은 experiment_id로 다시 실행한 기록이 이어 붙음): "
-                  + ", ".join(f"{target}/{arm}" for target, arm, _ in duplicates)]
+    if report.superseded:
+        lines += ["", f"참고: 같은 대상·갈래를 다시 돌린 기록이 있어 앞의 세션 {report.superseded}개는 집계에서 뺐습니다 "
+                  "(대상·갈래마다 마지막으로 끝난 세션만 씁니다)."]
+    lines += _outcome_section(report)
 
     lines += ["", "## 갈래별 요약", ""]
     rows = []
@@ -246,13 +264,14 @@ def render(report: RunReport) -> str:
     lines += ["", "## 세션별", ""]
     lines += _table(
         ["대상", "갈래", "턴", "종료", "k 처음 → 최소 → 끝", "첫 위반 턴", "최소 k_val", "첫 위반 턴 (k_val)",
-         "틀린 값이 들어간 QI", "일반화/억제 턴", "2회차", "지시 값 기록", "미해석"],
+         "틀린 값이 들어간 QI", "일반화/억제 턴", "개입 사유", "2회차", "잔여 단서로 재수정", "지시 값 기록", "미해석"],
         [[_name(s), s.arm, s.turns, s.stop_reason or "-",
           f"{_num(s.k_initial)} → {_num(s.k_min)} → {_num(s.k_final)}", _dash(s.first_violation_turn),
           _num(s.k_val_min) if s.validated else "-",
           _dash(s.validated_first_violation_turn) if s.validated else "-",
           (", ".join(s.incorrect_qis) or "없음") if s.validated else "-",
-          f"{s.generalized_turns}/{s.suppressed_turns}", s.second_round_turns, s.adopted, s.unresolved_released]
+          f"{s.generalized_turns}/{s.suppressed_turns}", _counts(s.intervention_reasons), s.second_round_turns,
+          s.residual_rounds, s.adopted, s.unresolved_released]
          for s in sessions])
 
     lines += ["", "## 추출·정규화", ""]
@@ -303,6 +322,51 @@ def render(report: RunReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _violated(session: SessionStats, validated: bool) -> bool:
+    """정답 대조가 있으면 k_val 기준, 없으면 실행 중 k_run 기준으로 위반 여부를 본다."""
+    if validated and session.validated:
+        return session.validated_first_violation_turn is not None
+    return session.first_violation_turn is not None
+
+
+def _outcome_section(report: RunReport) -> list[str]:
+    """대상별로 갈래의 결과를 나란히 놓고, 갈래 조합별 대상 수를 센다. 대상이 둘 이상일 때만 만든다."""
+    sessions = [s for s in report.sessions if s.session_key is None]
+    targets = _ordered(s.target_id for s in sessions)
+    arms = _ordered(s.arm for s in sessions)
+    if len(targets) < 2:
+        return []
+    basis = "k_val" if report.validated else "k_run (정답 대조 전)"
+    by = {(s.target_id, s.arm): s for s in sessions}
+    lines = ["", f"## 대상별 결과 (위반 판정 기준: {basis})", ""]
+
+    def cell(target: str, arm: str) -> str:
+        s = by.get((target, arm))
+        if s is None:
+            return "-"
+        k = s.k_val_min if (report.validated and s.validated) else s.k_min
+        turn = s.validated_first_violation_turn if (report.validated and s.validated) else s.first_violation_turn
+        return f"{_num(k)}" + (f" (위반 {turn}턴)" if _violated(s, report.validated) else "")
+
+    header = ["대상"] + (["층"] if report.strata else []) + [f"{arm} 최소 k" for arm in arms]
+    lines += _table(header, [[target] + ([report.strata.get(target, "-")] if report.strata else [])
+                             + [cell(target, arm) for arm in arms] for target in targets])
+
+    complete = [t for t in targets if all((t, arm) in by for arm in arms)]
+    patterns: Counter = Counter()
+    for target in complete:
+        key = tuple(_violated(by[(target, arm)], report.validated) for arm in arms)
+        patterns[(report.strata.get(target, "") if report.strata else "", key)] += 1
+    lines += ["", f"갈래별 위반 여부 조합 (모든 갈래가 끝난 대상 {len(complete)}명):", ""]
+    lines += _table((["층"] if report.strata else []) + [f"{arm} 위반" for arm in arms] + ["대상 수"],
+                    [([stratum or "-"] if report.strata else []) + ["예" if hit else "아니오" for hit in key] + [count]
+                     for (stratum, key), count in sorted(patterns.items(), key=lambda item: (item[0][0], item[0][1]),
+                                                         reverse=True)])
+    lines += ["", "대상 수가 적으므로 비율로 일반화하지 않습니다. 층(rich/sparse)은 사람 라벨로 어림한 구분이며 결과 수치가 아닙니다."
+              if report.strata else "대상 수가 적으므로 비율로 일반화하지 않습니다."]
+    return lines
+
+
 def _table(header: list[str], rows: list[list[Any]]) -> list[str]:
     out = ["| " + " | ".join(header) + " |", "| " + " | ".join("---" for _ in header) + " |"]
     out += ["| " + " | ".join(str(cell).replace("|", "/").replace("\n", " ") for cell in row) + " |" for row in rows]
@@ -344,14 +408,21 @@ def main() -> None:
     parser.add_argument("experiment_ids", nargs="+", help="runs/ 아래 실행 폴더 이름")
     parser.add_argument("--runs-root", default=str(DEFAULT_RUNS_ROOT))
     parser.add_argument("--no-file", action="store_true", help="report.md를 쓰지 않고 화면에만 출력")
+    parser.add_argument("--targets-file", default=None,
+                        help="대상 선정 파일 (python -m validation.select_targets 결과). 주면 대상별 표에 층을 함께 적는다")
     args = parser.parse_args()
+
+    strata = None
+    if args.targets_file:
+        selection = json.loads(Path(args.targets_file).read_text(encoding="utf-8"))
+        strata = {item["target_id"]: item["stratum"] for item in selection.get("targets", [])}
 
     for experiment_id in args.experiment_ids:
         run_dir = Path(args.runs_root) / experiment_id
         if not (run_dir / TRACE_FILE_NAME).exists():
             print(f"건너뜀: {run_dir}에 trace.jsonl이 없습니다. 폴더 이름을 확인하세요 (ls {args.runs_root}).\n")
             continue
-        text = render(load_run(run_dir))
+        text = render(load_run(run_dir, strata))
         print(text)
         if not args.no_file:
             (run_dir / REPORT_FILE_NAME).write_text(text, encoding="utf-8")

@@ -35,6 +35,7 @@ from orchestrator.rewriter import (
     RewriteInstruction,
     RewriteResult,
 )
+from qi_extractor.evidence import locate_span
 from qi_extractor.extractor import ExtractionError, QIExtractor
 from qi_extractor.schema import RawObservation
 
@@ -103,6 +104,9 @@ class RefusalReason(str, Enum):
     ROUNDS_EXHAUSTED = "ROUNDS_EXHAUSTED"                # 정해진 횟수 안에 하한을 만족하지 못함
 
 
+MIN_RESIDUAL_SPAN_CHARS = 6   # 이보다 짧은 근거 문구("his" 같은 낱말)는 다른 문맥에도 나오므로 잔여 검사에서 뺀다
+
+
 class ObservationNormalizer(Protocol):
     """normalizer.Normalizer와 ontology.OntologyNormalizer가 이 모양을 만족한다."""
 
@@ -120,10 +124,14 @@ class GateConfig:
     adopt_instructed_value
     → 고쳐 쓴 응답에서 일반화된 QI를 다시 추출했는데 그 표현을 규칙으로 읽지 못했을 때,
       Defender가 지시한 값으로 기록할지. 끄면 그 QI는 State에 들어가지 않는다 (공개됐는데 k에 반영되지 않음)
+    check_residual_evidence
+    → 지우라고 한 값의 근거 문구가 고쳐 쓴 응답에 글자 그대로 남아 있으면 그 회차를 통과시키지 않고 다시 고치게 할지.
+      재추출이 놓친 단서를 막기 위한 것이다. 한 문구가 지울 값과 남길 값의 근거를 겸하면 남길 값의 근거도 함께 빠진다
     """
     max_defense_rounds: int = 2
     refusal_text: str = DEFAULT_REFUSAL_TEXT
     adopt_instructed_value: bool = True
+    check_residual_evidence: bool = True
 
     def __post_init__(self) -> None:
         if self.max_defense_rounds < 1:
@@ -140,6 +148,7 @@ class DefenseRound:
     floor_satisfied: bool
     extraction_tokens: tuple[int, int]
     adopted_ids: tuple[str, ...] = ()   # Defender 지시 값으로 기록한 관찰 (adopt_instructed_value)
+    residual_evidence: tuple[str, ...] = ()   # 지우라고 한 값의 근거 문구 중 고쳐 쓴 응답에 그대로 남은 것
 
     def to_log_dict(self) -> dict[str, Any]:
         return {
@@ -149,6 +158,7 @@ class DefenseRound:
             "k_projected": self.k_projected,
             "floor_satisfied": self.floor_satisfied,
             "adopted_ids": list(self.adopted_ids),
+            "residual_evidence": list(self.residual_evidence),
             "extraction_input_tokens": self.extraction_tokens[0],
             "extraction_output_tokens": self.extraction_tokens[1],
         }
@@ -310,12 +320,13 @@ class ReleaseGate:
         normalized = raw_normalized
         rounds: list[DefenseRound] = []
 
+        carry: list[RewriteInstruction] = []      # 앞 회차에서 지우라고 했는데 근거 문구가 남은 항목
         for round_no in range(1, self._config.max_defense_rounds + 1):
             defense = judge.defend(normalized)
-            if not defense.intervened:
+            if not defense.intervened and not carry:
                 break
 
-            instructions = build_instructions(defense, observations)
+            instructions = (build_instructions(defense, observations) if defense.intervened else []) + carry
             try:
                 if not instructions:
                     raise RewriteError("Defender 판정을 추출 관찰과 연결하지 못했습니다.")
@@ -335,9 +346,12 @@ class ReleaseGate:
             normalized, adopted = self._adopt_instructed(
                 self._normalizer.normalize_all(observations), instructions, text, turn)
             k_judged = judge.project(normalized).k_after
-            satisfied = floor_satisfied(judge_before, k_judged, judge_floor)
+            # 재추출이 놓쳐도, 지우라고 한 값의 근거 문구가 글자 그대로 남아 있으면 통과시키지 않는다
+            carry = residual_instructions(instructions, text) if self._config.check_residual_evidence else []
+            residual = tuple(span for item in carry for span in item.evidence)
+            satisfied = floor_satisfied(judge_before, k_judged, judge_floor) and not residual
             rounds.append(DefenseRound(round_no, defense, rewrite, k_judged, satisfied,
-                                       (extraction.input_tokens, extraction.output_tokens), adopted))
+                                       (extraction.input_tokens, extraction.output_tokens), adopted, residual))
             if satisfied:
                 return decide(ReleasePath.REWRITTEN, text, normalized, rounds=rounds)
         else:
@@ -404,6 +418,25 @@ def _phrase_parts(phrase: str) -> list[str]:
     """'대학 이상의 학력 (higher education)' → ['대학 이상의 학력', 'higher education']."""
     head, _, tail = phrase.partition(" (")
     return [part for part in (head.strip(), tail.rstrip(")").strip()) if len(part) >= 2]
+
+
+def residual_instructions(instructions: Sequence[RewriteInstruction], text: str) -> list[RewriteInstruction]:
+    """
+    input : instructions (방금 고쳐 쓰기에 쓴 지시), text (고쳐 쓴 응답)
+    output : 삭제 지시 가운데 근거 문구가 응답에 그대로 남은 항목 (남은 문구만 근거로 담아 다음 회차에 다시 지시한다)
+
+    10/06 실행: 출생지를 지우라는 지시 뒤에도 "Midwest modesty versus Swiss efficiency" 인용문이 남았고,
+    재추출은 이를 출생지로 뽑지 않아 그대로 공개됐다. 추출기가 놓치는 경우를 글자 대조로 한 번 더 막는다.
+    """
+    remaining: list[RewriteInstruction] = []
+    for item in instructions:
+        if item.action is not RewriteAction.SUPPRESS:
+            continue
+        left = tuple(span for span in item.evidence
+                     if len(span.strip()) >= MIN_RESIDUAL_SPAN_CHARS and locate_span(span, text) is not None)
+        if left:
+            remaining.append(replace(item, evidence=left))
+    return remaining
 
 
 def build_instructions(defense: DefenseOutcome, observations: Sequence[RawObservation]) -> list[RewriteInstruction]:
