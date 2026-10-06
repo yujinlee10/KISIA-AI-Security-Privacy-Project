@@ -312,3 +312,26 @@ def test_report_shows_question_source_and_rejected_mutations(tmp_path, registry)
     assert [s.questions_from for s in report.sessions] == [None, "C0"]
     text = render(report)
     assert "C0의 질문 그대로" in text and "| 갈래 간 같은 질문 | True |" in text
+
+
+def test_zero_match_session_is_archived_with_its_own_trigger(tmp_path, registry):
+    """k가 0이 된 세션도 후보로 보관한다. 틀린 값이 섞여 후보가 없어진 것일 수 있어 정답 대조가 필요하다."""
+    from orchestrator.archive import TRIGGER_VIOLATION, TRIGGER_ZERO_MATCH
+
+    config = ExperimentConfig(experiment_id="zero", target_ids=(TARGET_ID,), arms=(Arm(Condition.C0),), max_turns=2,
+                              backend=Backend.ONTOLOGY, risk=RiskConfig(risk_threshold=3), output_root=tmp_path)
+    population = make_population()
+    script = ["기록을 보면 이 사용자는 스위스에 거주하는 것으로 보입니다.", "이 사용자는 여성이고 50대로 보입니다."]
+    extra = [("50대", {"attribute": "AGE", "raw_value": "50대", "value_en": "50s"})]
+    from tests.orchestrator import sample_data
+    sample_data.PHRASE_OBSERVATIONS.extend(extra)
+    try:
+        (result,) = run_experiment(config, client=RoleClient(script), population=population,
+                                   retriever=OneCommentRetriever(), registry=registry,
+                                   engine=build_risk_engine(Backend.ONTOLOGY, population, config.risk))
+    finally:
+        del sample_data.PHRASE_OBSERVATIONS[-1:]
+    assert result.k_final == 0 and result.first_violation_turn(4) is None      # 스위스에 50대 여성은 없다
+    (record,) = load_paths(config.run_dir)
+    assert record["trigger"] == TRIGGER_ZERO_MATCH and record["zero_match_turns"] == [2]
+    assert TRIGGER_VIOLATION != TRIGGER_ZERO_MATCH

@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 from adapters.fuzzer_adapter import FUZZER_SYSTEM_PROMPT_FILE, FuzzerAdapter, FuzzerConfig
 from adapters.replay_fuzzer import ReplayFuzzer, queries_of
+from orchestrator.shared_raw import SharedExtractor, SharedTarget
 from adapters.ontology_risk import OntologyRiskSession, build_population_index
 from adapters.risk_adapter import ReferencePopulation, RiskBackend, RiskConfig, RiskSession
 from attack.registry import SeedRegistry
@@ -69,8 +70,9 @@ class ExperimentConfig:
     gate               → 공개 게이트 설정 (고쳐 쓰기 횟수, 거절 문장)
     max_stale_turns    → k 변화 없는 턴이 이만큼 이어지면 새 Seed
     restrict_seeds_to_counted_qis → 백엔드가 k에 넣는 QI를 노리는 Seed만 고를지 (기본 True)
-    paired_questions   → True면 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던진다.
-                         갈래 간 차이에서 "질문이 달라서 생긴 차이"를 없애기 위한 설정이다.
+    paired_questions   → True면 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던지고,
+                         같은 질문의 원 응답과 그 추출 결과도 함께 쓴다 (Target은 질문만 보고 답하므로 같아야 맞다).
+                         갈래 간 차이가 공개 게이트에서만 생기게 하기 위한 설정이다.
                          나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않으므로 적응형 공격의 결과는 아니다
     fuzzer             → 질문 생성 설정 (자료 범위 안내, 변형 결과 검사, QI 고른 배분). None이면 기본값
     target / extractor / rewriter → 각 LLM 호출의 prompt 버전·temperature
@@ -249,9 +251,13 @@ def fuzzer_config_of(config: ExperimentConfig) -> FuzzerConfig:
 def build_session_parts(config: ExperimentConfig, client: Any, retriever: Retriever,
                         engine: RiskEngine) -> SessionParts:
     """세션들이 함께 쓰는 구성 요소(Target, 추출기, 정규화기, 공개 게이트)를 만든다. 재실행(replay.py)도 이것을 쓴다."""
-    extractor = QIExtractor(client, config.extractor)
+    extractor: Any = QIExtractor(client, config.extractor)
+    target: Any = TargetResponder(retriever, client, config.target)
+    if config.paired_questions:
+        # 같은 질문을 받는 갈래들이 같은 원 응답·같은 추출 결과에서 출발하게 한다 (orchestrator/shared_raw.py)
+        extractor, target = SharedExtractor(extractor), SharedTarget(target)
     return SessionParts(
-        target=TargetResponder(retriever, client, config.target),
+        target=target,
         extractor=extractor,
         normalizer=engine.normalizer,
         gate=ReleaseGate(extractor, engine.normalizer, ResponseRewriter(client, config.rewriter), config.gate),
@@ -302,6 +308,7 @@ def describe_run(config: ExperimentConfig, population: ReferencePopulation, retr
             "max_stale_turns": config.max_stale_turns,
             "restrict_seeds_to_counted_qis": config.restrict_seeds_to_counted_qis,
             "paired_questions": config.paired_questions,
+            "shared_raw_responses": config.paired_questions,
             **fuzzer_config_of(config).describes,
             "system_prompt_file": str(FUZZER_SYSTEM_PROMPT_FILE.relative_to(PROJECT_ROOT)),
             "system_prompt_sha256": _sha256(FUZZER_SYSTEM_PROMPT_FILE),

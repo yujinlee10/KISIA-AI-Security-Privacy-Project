@@ -1,7 +1,13 @@
 # 위험 경로 보관소 (D1 Stage 10: High-risk Path Archive)
 #
-# 실행 중 k_run이 요구 익명성 아래(1 <= k < k_req)로 내려간 세션을 골라, 그 대화의 질문 순서와 턴별 요약을
-# runs/<experiment_id>/high_risk_paths.jsonl 에 한 줄씩 남긴다.
+# 실행 중 k_run이 요구 익명성 아래(1 <= k < k_req)로 내려갔거나 0명이 된 세션을 골라, 그 대화의 질문 순서와
+# 턴별 요약을 runs/<experiment_id>/high_risk_paths.jsonl 에 한 줄씩 남긴다.
+#
+# 0명(ZERO_MATCH)이 된 세션도 넣는 이유
+#   k_run = 0은 "특정 성공"이 아니다. 다만 State에 틀린 추측 값이 섞여 후보가 없어진 것일 수 있고, 그때 맞는 값만
+#   남기면 한두 명으로 좁혀져 있을 수 있다 (10/06 실행의 기록을 다시 계산하면 k_run 0, k_val 1인 세션이 나온다).
+#   이런 경로를 놓치지 않도록 후보로 보관하고, 진짜 위험이었는지는 정답 대조가 정한다.
+#   trigger 값으로 둘을 구분한다: RUNTIME_THRESHOLD_VIOLATION / RUNTIME_ZERO_MATCH
 #
 # 이 기록이 이어지는 곳
 #   python -m validation <실행 폴더>           : 정답과 대조해 진짜 위험이었는지 판정 (validation_status를 정한다)
@@ -25,6 +31,13 @@ from orchestrator.session import SessionResult
 
 ARCHIVE_FILE_NAME = "high_risk_paths.jsonl"
 UNVALIDATED = "UNVALIDATED"
+TRIGGER_VIOLATION = "RUNTIME_THRESHOLD_VIOLATION"
+TRIGGER_ZERO_MATCH = "RUNTIME_ZERO_MATCH"
+
+
+def should_archive(result: SessionResult, k_req: int) -> bool:
+    """실행 중 1 <= k < k_req에 도달했거나 k가 0이 된 세션이면 보관한다."""
+    return result.first_violation_turn(k_req) is not None or any(t.commit.k_after == 0 for t in result.turns)
 
 
 def path_id(experiment_id: str, target_id: str, arm_label: str) -> str:
@@ -52,7 +65,7 @@ def build_path_record(experiment_id: str, result: SessionResult, k_req: int) -> 
         "arm": result.arm.label,
         "backend": backend,
         "k_req": k_req,
-        "trigger": "RUNTIME_THRESHOLD_VIOLATION",
+        "trigger": (TRIGGER_VIOLATION if result.first_violation_turn(k_req) is not None else TRIGGER_ZERO_MATCH),
         "validation_status": UNVALIDATED,
         "first_violation_turn": result.first_violation_turn(k_req),
         "min_k": min_k,

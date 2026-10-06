@@ -71,7 +71,7 @@
 
 | 항목 | 지금 정한 방식 | 확인할 점 |
 | --- | --- | --- |
-| 직업 → ISCO 코드 | 206행 기계 초안. H 132행, M 49행, L 25행 (Part 8에서 "developer", "coder"처럼 응답에 자주 나오는 넓은 표현 33행 추가) | M·L 74행의 코드. `python -m ontology --show-review`로 목록 확인 |
+| 직업 → ISCO 코드 | 206행 기계 초안. H 131행, M 50행, L 25행 (Part 8에서 "developer", "coder"처럼 응답에 자주 나오는 넓은 표현 33행 추가) | M·L 75행의 코드. `python -m ontology --show-review`로 목록 확인 |
 | 구분이 안 되는 직업 | 뒷받침되는 상위 코드에서 멈춤 (예: teacher → 23, engineer → 21) | 상위 코드로 둔 사람은 하위 코드 조건에 걸리지 않음. 이 처리가 맞는지 |
 | 은퇴·분류 불가 | ISCO 밖의 보조 node `OCCP:X` (6명) | D1은 자체 분류를 금지함. 별도 처리 방식이 필요한지 |
 | "retired", "part-time" 등 수식어 | 떼고 직업만 대조 | 은퇴 여부를 정보로 볼지 |

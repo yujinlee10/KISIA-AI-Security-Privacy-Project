@@ -71,6 +71,7 @@ class RawObservation:
     confidence: int
     evidence_spans: tuple[EvidenceSpan, ...]
     source_turn: int
+    unverified_spans: tuple[str, ...] = ()   # LLM이 근거로 냈지만 응답 원문에서 찾지 못해 뺀 문구
 
     def to_log_dict(self) -> dict[str, Any]:
         return {
@@ -81,6 +82,7 @@ class RawObservation:
             "inference_mode": self.inference_mode.value,
             "confidence": self.confidence,
             "evidence_spans": [span.text for span in self.evidence_spans],
+            "unverified_spans": list(self.unverified_spans),
             "source_turn": self.source_turn,
         }
 

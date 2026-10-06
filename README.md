@@ -9,11 +9,11 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 692개 통과 (LLM 호출은 가짜 client 사용) |
+| 단위·통합 테스트 | 697개 통과 (LLM 호출은 가짜 client 사용) |
 | 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
 | 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
 | Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
-| 위험 경로 보관 (D1 Stage 10) | 실행 중 k가 k_req 아래로 내려간 세션의 질문 순서를 `high_risk_paths.jsonl`에 기록 |
+| 위험 경로 보관 (D1 Stage 10) | 실행 중 k가 k_req 아래로 내려갔거나 0이 된 세션의 질문 순서를 `high_risk_paths.jsonl`에 기록 |
 | 정답(GT) 대조 평가 `k_val` | `python -m validation` (실행이 끝난 뒤 따로 돌림. 실행 중 코드는 정답을 읽지 않음) |
 | Exact Replay (D1 Stage 13) | `python -m orchestrator.replay` (보관된 질문을 새 세션에서 그대로 재실행) |
 | 실행 집계 | `python -m orchestrator.report` |
@@ -101,7 +101,7 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 692 passed
+python -m pytest -q                     # 697 passed
 python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 
@@ -130,6 +130,8 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `--all-seeds` | 꺼짐 | 켜면 k에 들어가지 않는 QI를 묻는 Seed도 고른다 (기본은 백엔드가 세는 QI를 노리는 Seed만) |
 | `--paired` | 꺼짐 | 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던진다. 갈래를 비교할 때는 켜는 것을 권장 |
 | `--plain-mutation` | 꺼짐 | 질문 생성의 보정(Target 자료 범위 안내, 변형 결과의 자료 출처 검사, QI 고른 배분)을 끈다. 이전 동작과 비교할 때만 사용 |
+| `--min-confidence` | 없음 | 추출기 확신도(1~5)가 이 값보다 낮은 관찰은 State에 넣지 않는다 |
+| `--rewriter-prompt` | `rewriter_system_v2` | 재작성 프롬프트 버전. v2는 삭제 지시에서 인용문과 다른 단서까지 빼도록 규칙을 구체화 |
 | `--extractor-prompt` | `extractor_system_v2` | 추출 프롬프트 버전. v2는 값마다 표준 영어 표기(`value_en`)를 요구한다. 이전 동작은 `extractor_system_v1` |
 
 턴당 LLM 호출은 질문 생성 1회, Target 1회, 추출 1회이고, C1에서 Defender가 개입하면 재작성과 재추출이 1회씩 더 듭니다. 기준 집단 30만 명 적재에 수 초, 메모리 약 500MB가 필요합니다.
@@ -146,7 +148,7 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 
 자료 출처 검사는 실제 실행에서 나온 표현을 모은 목록이라 빠진 표현이 있을 수 있습니다. 버린 변형의 수와 사유는 `report.md`의 "공격 쪽" 표에 나옵니다.
 
-**갈래 간 같은 질문 (`--paired`).** 기본 실행에서는 갈래마다 Fuzzer가 따로 질문을 만들어서, Defender가 개입하지 않아도 갈래 간 k가 달라집니다. `--paired`를 켜면 첫 갈래(보통 C0)의 질문 순서를 나머지 갈래에 그대로 던지므로 차이가 공개 게이트에서만 생깁니다. 대신 나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않습니다. "방어된 응답을 보고 질문을 바꾸는 공격자"의 결과가 필요하면 `--paired` 없이 돌립니다.
+**갈래 간 같은 질문과 같은 원 응답 (`--paired`).** 기본 실행에서는 갈래마다 Fuzzer가 따로 질문을 만들어서, Defender가 개입하지 않아도 갈래 간 k가 달라집니다. `--paired`를 켜면 첫 갈래(보통 C0)의 질문 순서를 나머지 갈래에 그대로 던지고, 같은 질문에 대한 Target의 원 응답과 그 추출 결과도 갈래들이 함께 씁니다. Target은 대화 기록 없이 질문만 보고 답하므로 같은 질문에는 같은 원 응답이 맞는데, 실제 모델은 temperature 0에서도 호출마다 응답이 달라졌기 때문입니다(10월 6일 실행에서 같은 질문 12개 중 8개). 이렇게 하면 갈래 간 차이는 공개 게이트(Defender 판정 → 재작성 → 재추출)에서만 생깁니다. 함께 쓴 응답은 trace에 토큰 0으로 기록됩니다. 대신 나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않습니다. "방어된 응답을 보고 질문을 바꾸는 공격자"의 결과가 필요하면 `--paired` 없이 돌립니다.
 
 ### 결과 파일
 
@@ -157,7 +159,7 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `experiment_log.csv` | `evaluation_v1/log_schema_v1.py` 형식의 턴별 기록 (k 전후, 위반·교차 여부, 일반화·억제 여부) |
 | `trace.jsonl` | 턴별 상세 기록 (질문, 원 응답, 추출·정규화, Defender 판정, 재작성, 공개 응답, Coverage 판정). 세션 끝에는 Coverage 요약 |
 | `run_config.json` | 실행 설정 (모델, 프롬프트 버전, temperature, 기준 집단, Seed 파일 해시, 위험 기준, 백엔드, 온톨로지 버전·해시) |
-| `high_risk_paths.jsonl` | 실행 중 1 ≤ k < k_req에 도달한 세션마다 한 줄 (질문 순서, Seed, 턴별 k). 그런 세션이 없으면 파일도 없음 |
+| `high_risk_paths.jsonl` | 실행 중 1 ≤ k < k_req에 도달했거나 k가 0이 된 세션마다 한 줄 (질문 순서, Seed, 턴별 k, `trigger`). 그런 세션이 없으면 파일도 없음. k = 0은 틀린 값이 섞여 생긴 것일 수 있어 후보로만 보관하고 정답 대조로 가린다 |
 | `validation.jsonl`, `experiment_log_validated.csv`, `validated_paths.jsonl` | `python -m validation`이 만든다 (아래) |
 | `report.md` | `python -m orchestrator.report`가 만든다 (아래) |
 
@@ -218,7 +220,7 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 | 기준 집단 | 30만 명 | 국가명·관계 상태 표기가 일부 섞여 있음 |
 | k 계산 대상 QI | 기본 백엔드 5개 / `ontology` 8개 | 기본 백엔드에서 SEX, INC, POB는 추출·기록만 함 |
 | 일반화 계층 | 기본은 `risk_defender` 계층 | D1 Stage 3 계층은 `--backend ontology`로 사용 |
-| 직업 → ISCO 대응표 | `ontology/data/occp_alias_v0.1.csv` (206행) | 기계 초안. 74행은 사람 검토 필요 (`python -m ontology --show-review`) |
+| 직업 → ISCO 대응표 | `ontology/data/occp_alias_v0.1.csv` (206행) | 기계 초안. 75행은 사람 검토 필요 (`python -m ontology --show-review`) |
 | 억제 시점 | 백엔드마다 다름 | `risk_defender`는 k ≤ 3이면 일반화 없이 억제, D1은 일반화를 먼저 시도 |
 | Target 검색 | persona 코멘트 전체 | 임베딩 top-k 검색은 미적용 |
 | Seed | 117개, 개발 모드 | 사람 검토 전이라 본 실험 모드에서는 적재 거부 |
@@ -228,6 +230,9 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 | State ID | State에 반영된 값 기준 | Part 7까지는 공개 기록 기준이었음. 이전 실행의 `state_id`와는 값이 다름 |
 | 지역·나이 해석 | 여러 지역을 나열한 표현은 미해석, 권역 이름은 국가까지 | "중서부, 스위스"는 정하지 않고 "미국 중서부"는 미국으로 읽음. 원문 범위가 표준 표기보다 넓은 나이는 10년 구간까지만 인정 |
 | 대상 수 | 실행 명령의 기본값은 pers1 한 명 | 파이프라인 확인용. 결과를 주장하려면 `--target`에 여러 명을 주어야 함. 대상 선정 기준은 미정 |
+| 추출 근거 검증 | 근거 문구 중 하나라도 응답에 있으면 관찰을 인정 | 이전에는 하나라도 못 찾으면 관찰 전체를 버림. 못 찾은 문구는 trace의 `unverified_spans`에 기록 |
+| 추측성 값 | State에 그대로 반영 | Target이 근거가 약한 추정(소득, 관계 상태 등)을 답하면 틀린 값이 State에 들어가고, 이후 Defender 판정이 그 State를 기준으로 이뤄짐. 실행 후 `k_val`로 가려냄. `--min-confidence`로 줄일 수 있으나 맞는 값도 함께 빠질 수 있음 |
+| State 충돌 | 먼저 들어간 값 유지 | 나중에 더 확실한 값이 나와도 바뀌지 않음. 정책 결정 필요 |
 | 검증의 범위 | State에 들어간 QI만 | 정규화하지 못한 공개분은 `k_val`에도 반영되지 않음 |
 
 ## 브랜치와 커밋 규칙

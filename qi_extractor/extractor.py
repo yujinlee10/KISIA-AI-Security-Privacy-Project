@@ -324,14 +324,20 @@ def _validate_item(
             or not all(isinstance(s, str) and s.strip() for s in spans_raw):
         return reject(RejectReason.MISSING_EVIDENCE, "evidence_spans가 비어 있거나 문자열 배열이 아닙니다.")
 
-    # 근거가 하나라도 응답에 없으면 관찰 전체를 거부한다. 일부라도 지어낸 근거면 값도 신뢰할 수 없다.
+    # 응답 원문에서 확인되는 근거만 남긴다. 하나도 확인되지 않으면 관찰을 거부한다.
+    # (10/06 실제 실행: 추출기가 근거 네 개 중 하나를 인용 번호를 빼고 줄여 적어, 맞는 나이 관찰이 통째로 버려졌다.
+    #  이전에는 하나라도 못 찾으면 전체를 거부했다. 찾지 못한 문구는 unverified_spans에 남긴다.)
     spans: list[EvidenceSpan] = []
+    unverified: list[str] = []
     for span_text in spans_raw:
         located = locate_span(span_text, response)
         if located is None:
-            return reject(RejectReason.EVIDENCE_NOT_IN_RESPONSE, f"응답에 없는 근거: {span_text[:60]!r}")
+            unverified.append(span_text)
+            continue
         start, end = located
         spans.append(EvidenceSpan(text=response[start:end], start=start, end=end))
+    if not spans:
+        return reject(RejectReason.EVIDENCE_NOT_IN_RESPONSE, f"응답에 없는 근거: {unverified[0][:60]!r}")
 
     if is_query_echo([span.text for span in spans], query):
         return reject(RejectReason.QUERY_ONLY, "근거가 모두 질문 문구의 반복입니다.")
@@ -348,4 +354,5 @@ def _validate_item(
         confidence=confidence,
         evidence_spans=tuple(spans),
         source_turn=source_turn,
+        unverified_spans=tuple(unverified),
     )

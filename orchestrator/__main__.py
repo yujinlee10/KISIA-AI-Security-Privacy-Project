@@ -20,6 +20,7 @@ from adapters.risk_adapter import PopulationMode, RiskConfig, load_reference_pop
 from attack.registry import SeedRegistry
 from core.config import get_settings
 from core.llm_client import LLMClient
+from orchestrator.archive import should_archive
 from orchestrator.experiment import (
     Backend,
     ExperimentConfig,
@@ -28,6 +29,8 @@ from orchestrator.experiment import (
     run_experiment,
 )
 from orchestrator.release_gate import ARM_LABELS, Arm, GateConfig
+from orchestrator.rewriter import DEFAULT_PROMPT_VERSION as DEFAULT_REWRITER_PROMPT
+from orchestrator.rewriter import RewriterConfig
 from orchestrator.session import SessionResult, TurnRecord
 from qi_extractor.extractor import DEFAULT_PROMPT_VERSION as DEFAULT_EXTRACTOR_PROMPT
 from qi_extractor.extractor import ExtractorConfig
@@ -48,11 +51,13 @@ def main() -> None:
         max_turns=args.turns,
         rng_seed=args.rng_seed,
         risk=RiskConfig(risk_threshold=args.threshold,
-                        generalize_threshold=max(args.generalize_threshold, args.threshold)),
+                        generalize_threshold=max(args.generalize_threshold, args.threshold),
+                        tau_commit=args.min_confidence),
         gate=GateConfig(max_defense_rounds=args.defense_rounds),
         restrict_seeds_to_counted_qis=not args.all_seeds,
         target=TargetConfig(temperature=None if args.temperature < 0 else args.temperature),
         extractor=ExtractorConfig(prompt_version=args.extractor_prompt),
+        rewriter=RewriterConfig(prompt_version=args.rewriter_prompt),
         paired_questions=args.paired,
         fuzzer=(FuzzerConfig(target_scope_note=None, out_of_scope_sources=(), balance_qis=False)
                 if args.plain_mutation else None),
@@ -93,9 +98,9 @@ def main() -> None:
     if any(result.unresolved_released for result in results):
         print("미해석: 공개됐지만 정규화하지 못해 k에 반영되지 않은 관찰 수입니다. "
               "많으면 k가 실제보다 크게 나옵니다 (trace.jsonl의 released_observations에서 확인).")
-    archived = sum(1 for result in results if result.first_violation_turn(config.risk.k_req) is not None)
+    archived = sum(1 for result in results if should_archive(result, config.risk.k_req))
     print(f"결과 폴더: {config.run_dir}")
-    print(f"위험 경로 보관: {archived}건 (실행 중 추정 기준, 검증 전)")
+    print(f"위험 경로 보관: {archived}건 (실행 중 k가 k_req 아래로 내려갔거나 0이 된 세션. 검증 전)")
     print(f"다음 단계: python -m validation {config.experiment_id}    # 정답 대조 (LLM 호출 없음)")
     print(f"           python -m orchestrator.report {config.experiment_id}    # 집계 표")
     if archived:
@@ -129,6 +134,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--plain-mutation", action="store_true",
                         help="질문 생성의 보정을 끈다: Target 자료 범위 안내, 변형 결과의 자료 출처 검사, QI 고른 배분 "
                              "(Part 8까지의 동작과 비교할 때 쓴다)")
+    parser.add_argument("--min-confidence", type=int, default=None, choices=[1, 2, 3, 4, 5],
+                        help="추출기 확신도가 이 값보다 낮은 관찰은 State에 넣지 않는다 (기본: 제한 없음). "
+                             "추측성 값이 State를 오염시키는지 비교할 때 쓴다")
+    parser.add_argument("--rewriter-prompt", default=DEFAULT_REWRITER_PROMPT,
+                        help="재작성 prompt 버전 (orchestrator/prompts/ 안의 파일 이름)")
     parser.add_argument("--extractor-prompt", default=DEFAULT_EXTRACTOR_PROMPT,
                         help="추출기 prompt 버전 (qi_extractor/prompts/ 안의 파일 이름)")
     parser.add_argument("--experiment-id", default=None, help="결과 폴더 이름 (기본: poc_날짜_시각)")

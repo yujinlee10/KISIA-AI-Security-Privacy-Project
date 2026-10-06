@@ -171,9 +171,20 @@ def test_invalid_item_is_rejected_with_reason(overrides, reason):
     assert result.rejected[0].reason is reason
 
 
-def test_one_fabricated_span_rejects_whole_observation():
-    bad = item(evidence_spans=["취리히에서 생활하는 것으로 보입니다", "스위스 시민권자입니다"])
+def test_observation_survives_when_some_evidence_is_verified():
+    """근거 일부를 응답에서 찾지 못해도, 찾은 근거가 있으면 관찰은 남기고 못 찾은 문구를 기록한다."""
+    mixed = item(evidence_spans=["취리히에서 생활하는 것으로 보입니다", "스위스 시민권자입니다"])
+    result, _ = extract(llm(as_output(mixed)))
+    (observation,) = result.observations
+    assert [span.text for span in observation.evidence_spans] == ["취리히에서 생활하는 것으로 보입니다"]
+    assert observation.unverified_spans == ("스위스 시민권자입니다",)
+    assert observation.to_log_dict()["unverified_spans"] == ["스위스 시민권자입니다"]
+
+
+def test_observation_without_any_verified_evidence_is_rejected():
+    bad = item(evidence_spans=["스위스 시민권자입니다", "베른에 삽니다"])
     result, _ = extract(llm(as_output(bad)))
+    assert result.observations == ()
     assert result.rejected[0].reason is RejectReason.EVIDENCE_NOT_IN_RESPONSE
 
 

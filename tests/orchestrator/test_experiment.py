@@ -166,7 +166,7 @@ def test_run_config_records_versions_without_secrets(run):
     assert data["backend"]["name"] == "risk_defender" and data["backend"]["qi_in_k"] == 5
     assert data["risk"] == {"risk_threshold": 3, "generalize_threshold": 5, "k_req": 4, "tau_commit": None}
     assert data["prompts"] == {"target": "target_system_v1", "extractor": "extractor_system_v2",
-                               "rewriter": "rewriter_system_v1"}
+                               "rewriter": "rewriter_system_v2"}
     assert data["population"]["size"] == 8
     assert len(data["seed_registry"]["sources"]) == 2 and data["seed_registry"]["mode"] == "development"
     assert all(not source["path"].startswith("/") for source in data["seed_registry"]["sources"])   # 개인 경로 미포함
@@ -257,3 +257,35 @@ def test_paired_follower_stops_where_the_lead_stopped(tmp_path, registry):
 def test_unpaired_run_has_no_question_source(run):
     config, _, _ = run
     assert all("questions_from" not in item for item in read_trace(config))
+
+
+# ── 갈래 간 원 응답 공유 ──────────────────────────────────
+
+def test_paired_arms_share_raw_responses_and_raw_extraction(tmp_path, registry):
+    """
+    Target이 호출마다 다른 답을 내더라도(대본을 갈래마다 다르게 넣어도) 같은 질문에는 첫 갈래의 원 응답을 쓴다.
+    Target 호출은 첫 갈래의 3번뿐이고, 원 응답 추출도 3번뿐이다 (나머지는 재작성한 응답의 재추출).
+    """
+    noisy = [RAW_T1, RAW_T2, RAW_T3] + ["기록만으로는 알 수 없습니다."] * 6
+    _, results, client = run_paired(tmp_path, registry, script=noisy)
+    raw = [[t.target.raw_candidate_response for t in result.turns] for result in results]
+    assert raw[0] == raw[1] == raw[2] == [RAW_T1, RAW_T2, RAW_T3]
+    assert client.count("target") == 3
+    rewrites = client.count("rewriter")
+    assert 3 < client.count("extractor") <= 3 + rewrites      # 두 갈래가 똑같이 고쳐 쓴 응답은 한 번만 추출한다
+    c0, c1, _ = results
+    assert c0.first_violation_turn(4) is not None and c1.first_violation_turn(4) is None
+
+
+def test_shared_results_do_not_count_cost_twice(tmp_path, registry):
+    _, (c0, c1, _), _ = run_paired(tmp_path, registry)
+    assert all(t.target.input_tokens > 0 for t in c0.turns)
+    assert all(t.target.input_tokens == 0 and t.target.attempts == 0 for t in c1.turns)
+    assert all(t.raw_extraction.input_tokens == 0 for t in c1.turns)
+    assert [o.raw_value for t in c1.turns for o in t.raw_extraction.observations] == \
+           [o.raw_value for t in c0.turns for o in t.raw_extraction.observations]
+
+
+def test_unpaired_arms_call_the_target_separately(run):
+    _, _, client = run
+    assert client.count("target") == 9

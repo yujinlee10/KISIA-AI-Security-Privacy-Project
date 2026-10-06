@@ -19,7 +19,7 @@ from core.llm_client import LLMResponse
 BASE_DIR = Path(__file__).resolve().parent
 PROMPT_DIR = BASE_DIR / "prompts"
 
-DEFAULT_PROMPT_VERSION = "rewriter_system_v1"
+DEFAULT_PROMPT_VERSION = "rewriter_system_v2"   # v2: 삭제 지시에서 인용문·다른 단서까지 빼도록 규칙 3을 구체화 (10/06 실행에서 v1이 인용문을 남김)
 
 RESPONSE_SECTION_HEADER = "[원래 응답]"
 INSTRUCTION_SECTION_HEADER = "[수정 지시]"

@@ -19,7 +19,7 @@ from typing import Any
 
 from adapters.risk_adapter import RiskConfig
 from evaluation_v1.log_schema_v1 import KST, ExperimentLogRecord, LogManager
-from orchestrator.archive import ARCHIVE_FILE_NAME, build_path_record
+from orchestrator.archive import ARCHIVE_FILE_NAME, build_path_record, should_archive
 from orchestrator.release_gate import Arm, DefenderMode
 from orchestrator.session import SessionResult, TurnRecord
 
@@ -101,12 +101,12 @@ class RunLogger:
     def log_session_end(self, result: SessionResult, *, session_key: str | None = None,
                         extra: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """
-        세션 요약을 trace에 남기고, k가 요구 익명성 아래로 내려간 세션이면 위험 경로 보관소에 넣는다.
+        세션 요약을 trace에 남기고, k가 요구 익명성 아래로 내려갔거나 0이 된 세션이면 위험 경로 보관소에 넣는다.
         output : 보관한 경로 기록 (보관하지 않았으면 None)
         """
         k_req = self._risk_config.k_req
         archived = None
-        if self._archive and result.first_violation_turn(k_req) is not None:
+        if self._archive and should_archive(result, k_req):
             archived = build_path_record(self._experiment_id, result, k_req)
             with self.archive_path.open("a", encoding="utf-8") as file:
                 file.write(json.dumps(archived, ensure_ascii=False) + "\n")
