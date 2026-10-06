@@ -57,7 +57,10 @@ def main() -> None:
     parser.add_argument("--data-url", default=DEFAULT_DATA_URL)
     parser.add_argument("--refresh-data", action="store_true")
     parser.add_argument("--target-id", default=None)
-    parser.add_argument("--threshold", type=int, default=3)
+    parser.add_argument("--generalize-threshold", type=int, default=5,
+                        help="k ≤ 이 값이면 일반화 시도 (기본값: 5)")
+    parser.add_argument("--suppress-threshold", type=int, default=3,
+                        help="일반화 후에도 k ≤ 이 값이면 억제 (기본값: 3)")
     parser.add_argument("--out", default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument(
         "--expanded",
@@ -97,13 +100,14 @@ def main() -> None:
             population,
             state,
             [candidate],
-            threshold=args.threshold,
+            threshold=args.generalize_threshold,
         )
         decision = defend_candidate_qis(
             population,
             state,
             [candidate],
-            threshold=args.threshold,
+            generalize_threshold=args.generalize_threshold,
+            suppress_threshold=args.suppress_threshold,
         )
         state = decision.final_state
         rows.append(

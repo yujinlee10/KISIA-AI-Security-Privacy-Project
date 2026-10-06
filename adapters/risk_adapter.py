@@ -9,10 +9,18 @@
 #        commit  → update_state + calculate_k: 실제로 공개된 응답의 관찰만 State에 반영
 #
 # 판정 기준을 하나로 맞춘 방법
-#   risk_defender : k <= risk_threshold 이면 위험         (이유진 파트 README 결정값 3)
+#   risk_defender (2026-10-04 수정본, 기준 두 개)
+#       k >  generalize_threshold(5)                     : 그대로 허용
+#       suppress_threshold(3) < k <= generalize_threshold : 일반화 시도 (5 초과가 안 되면 3 초과인 값으로 공개)
+#       k <= suppress_threshold(3)                        : 일반화 없이 바로 억제
+#     → 공개 후 k가 반드시 지켜지는 경계는 suppress_threshold 쪽이다 (k >= 4).
 #   evaluation_v1 : 1 <= k < k_req 이면 위반              (이정민 파트 log_schema_v1)
-#   두 식이 같은 경계를 쓰도록 k_req = risk_threshold + 1 로 넘긴다 (threshold 3 ⇔ k_req 4).
+#   두 식이 같은 경계를 쓰도록 k_req = risk_threshold + 1 로 넘긴다 (risk_threshold = suppress_threshold, 3 ⇔ k_req 4).
 #   D1 Part III의 Primary는 k_req = 5 (= risk_threshold 4)라서, 어느 쪽으로 갈지는 팀 확인이 필요하다.
+#
+# 백엔드 교체
+#   orchestrator는 이 파일의 RiskSession과 adapters/ontology_risk.py의 OntologyRiskSession을
+#   같은 방법(project·defend·commit 등, 아래 RiskBackend)으로 쓴다. 계층·판정 방식만 다르다.
 #
 # confidence 기준
 #   risk_defender.update_state는 0~1 실수 confidence를 0.5와 비교한다. 추출기는 1~5 정수를 쓴다.
@@ -24,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from core.schemas import RISK_DEFENDER_QI_TYPES
 from normalizer.normalizer import NormalizedObservation
@@ -32,11 +40,12 @@ from risk_defender.defender import defend_candidate_qis
 from risk_defender.demo import DEFAULT_DATA_PATH, DEFAULT_SYNTH_PATH
 from risk_defender.loader import PersonaRecord, load_expanded_population, load_population
 from risk_defender.risk import calculate_k, evaluate_projected_risk
-from risk_defender.schema import PrivacyState, QIObservation, update_state
+from risk_defender.schema import PrivacyState, QIObservation, is_more_specific, update_state
 
 
-# 이유진 파트 README "Threshold 선정 근거"에서 결정한 값 (30만 명 기준 실험 → 3)
-DEFAULT_RISK_THRESHOLD = 3
+# 이유진 파트 README 결정값 (2026-10-04): 일반화 기준 5, 억제 기준 3
+DEFAULT_RISK_THRESHOLD = 3          # = suppress_threshold
+DEFAULT_GENERALIZE_THRESHOLD = 5
 
 
 # ──────────────────────────────────────────────────────────────
@@ -111,16 +120,22 @@ def load_reference_population(
 class RiskConfig:
     """
     risk_threshold
-    → risk_defender 기준: k <= 이 값이면 위험 (기본 3, 이유진 파트 결정값)
+    → 반드시 지키는 경계: k <= 이 값이면 위험 (기본 3). risk_defender의 suppress_threshold로 넘어간다
+    generalize_threshold
+    → risk_defender가 일반화를 시도하기 시작하는 경계 (기본 5). risk_threshold 이상이어야 한다.
+      온톨로지 백엔드(D1 Defender)는 이 값을 쓰지 않는다 (하한 k_floor만 쓴다)
     tau_commit
     → 이 confidence(1~5) 미만 관찰은 State에 넣지 않음. None이면 confidence로 거르지 않음 (Pilot 전 임시)
     """
     risk_threshold: int = DEFAULT_RISK_THRESHOLD
+    generalize_threshold: int = DEFAULT_GENERALIZE_THRESHOLD
     tau_commit: int | None = None
 
     def __post_init__(self) -> None:
         if self.risk_threshold < 1:
             raise ValueError("risk_threshold는 1 이상이어야 합니다.")
+        if self.generalize_threshold < self.risk_threshold:
+            raise ValueError("generalize_threshold는 risk_threshold 이상이어야 합니다.")
         if self.tau_commit is not None and not 1 <= self.tau_commit <= 5:
             raise ValueError("tau_commit은 1~5 정수 또는 None이어야 합니다.")
 
@@ -187,6 +202,9 @@ class DefenseOutcome:
     → 응답에서 빼야 하는 관찰
     k_before / k_raw / k_final
     → 방어 전 State의 k / 그대로 공개했을 때 k / 방어 결과대로 공개했을 때 k
+    replacement_text
+    → {observation_id → 응답에 쓸 표현}. 일반화 값이 node_id처럼 문장에 그대로 쓸 수 없는 형식일 때 채운다.
+      비어 있으면 generalized의 일반화 값을 그대로 쓴다
     """
     action: str
     allowed_ids: tuple[str, ...]
@@ -197,6 +215,7 @@ class DefenseOutcome:
     k_final: int
     selection: Selection
     defense_log: tuple[dict[str, Any], ...]
+    replacement_text: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def intervened(self) -> bool:
@@ -245,6 +264,36 @@ class CommitOutcome:
 # 세션
 # ──────────────────────────────────────────────────────────────
 
+class RiskBackend(Protocol):
+    """
+    orchestrator가 위험 계산 세션에 기대하는 모양. RiskSession과 OntologyRiskSession이 이를 만족한다.
+
+    committed_qis      : 현재 State (QI → 값). 값 형식은 백엔드마다 다르다 (문자열 값 / 온톨로지 node_id)
+    refinable_qis      : 지금 값보다 더 구체적인 값이 있는 QI. None이면 attack.conditions의 기본 규칙을 쓴다
+    display_value()    : State 값을 사람이 읽는 표현으로 (Seed 문장 채우기, 화면 출력용)
+    relation()         : 이미 공개된 값(existing)에 비해 새 값(candidate)이 어떤 관계인지
+    fresh()            : 같은 기준 집단·설정의 빈 세션 (무상태 대조군의 판정용)
+    """
+    backend_name: str
+
+    @property
+    def config(self) -> "RiskConfig": ...
+    @property
+    def k_current(self) -> int: ...
+    @property
+    def committed_qis(self) -> dict[str, Any]: ...
+    @property
+    def conflict_count(self) -> int: ...
+    @property
+    def refinable_qis(self) -> frozenset[str] | None: ...
+    def display_value(self, attribute: str, value: Any) -> str: ...
+    def relation(self, attribute: str, existing: Any, candidate: Any) -> str: ...
+    def fresh(self) -> "RiskBackend": ...
+    def project(self, observations: Sequence[NormalizedObservation]) -> "RiskProjection": ...
+    def defend(self, observations: Sequence[NormalizedObservation]) -> "DefenseOutcome": ...
+    def commit(self, observations: Sequence[NormalizedObservation]) -> "CommitOutcome": ...
+
+
 class RiskSession:
     """
     target 한 명과의 대화 세션 하나에 대응한다. risk_defender PrivacyState를 하나 들고 있다.
@@ -263,6 +312,8 @@ class RiskSession:
     ) -> None:
         self._population = population
         self._config = config
+        self._target_id = target_id
+        self._session_id = session_id
         self._state = PrivacyState(target_id=target_id, session_id=session_id)
         self._k_current = calculate_k(population.records, self._state).k
 
@@ -285,6 +336,29 @@ class RiskSession:
     @property
     def conflict_count(self) -> int:
         return len(self._state.conflicts)
+
+    backend_name = "risk_defender"
+
+    @property
+    def refinable_qis(self) -> frozenset[str] | None:
+        """None: 더 구체화할 수 있는지는 attack.conditions.has_descendant의 risk_defender 규칙으로 판단한다."""
+        return None
+
+    def display_value(self, attribute: str, value: Any) -> str:
+        return str(value)
+
+    def relation(self, attribute: str, existing: Any, candidate: Any) -> str:
+        """구체성 비교는 risk_defender.schema.is_more_specific을 그대로 쓴다."""
+        if existing == candidate:
+            return "SAME"
+        if is_more_specific(attribute, candidate, existing):
+            return "DESCENDANT"
+        if is_more_specific(attribute, existing, candidate):
+            return "ANCESTOR"
+        return "INCOMPATIBLE"
+
+    def fresh(self) -> "RiskSession":
+        return RiskSession(self._population, self._target_id, self._session_id, self._config)
 
     # ── 선별 ─────────────────────────────────────────────
 
@@ -355,14 +429,19 @@ class RiskSession:
 
         decision = defend_candidate_qis(
             self._population.records, self._state, list(selection.accepted),
-            threshold=self._config.risk_threshold,
+            generalize_threshold=self._config.generalize_threshold,
+            suppress_threshold=self._config.risk_threshold,
         )
 
         # risk_defender는 일반화 결과를 {qi_type, from, to} dict로만 돌려준다.
         # (qi_type, 원래 값)으로 우리 observation_id를 되찾는다.
-        id_by_value = {(qi.qi_type, qi.value): qi.source for qi in selection.accepted}
+        # 같은 값이 한 응답에 두 번 나오면 일반화 결과도 두 건 온다. 나온 순서대로 id를 하나씩 짝짓는다.
+        ids_by_value: dict[tuple[str, Any], list[str]] = {}
+        for qi in selection.accepted:
+            ids_by_value.setdefault((qi.qi_type, qi.value), []).append(qi.source or "")
         generalized = tuple(
-            (id_by_value.get((item["qi_type"], item["from"]), ""), item["qi_type"], item["from"], item["to"])
+            ((ids_by_value.get((item["qi_type"], item["from"])) or [""]).pop(0),
+             item["qi_type"], item["from"], item["to"])
             for item in decision.generalized_qis
         )
         return DefenseOutcome(

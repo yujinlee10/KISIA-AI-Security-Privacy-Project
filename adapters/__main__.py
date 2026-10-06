@@ -64,7 +64,8 @@ def main() -> None:
     projection = session.project(normalized)
     defense = session.defend(normalized)
     print("------ 위험 계산 (State 변경 없음) ------")
-    print(f"k: {projection.k_before:,} → {projection.k_after:,} / 위험(k<={args.threshold}): {projection.risky}")
+    print(f"k: {projection.k_before:,} → {projection.k_after:,} / 위험(k<={args.threshold}): {projection.risky} "
+          f"/ 일반화 시도 기준 k<={session.config.generalize_threshold}")
     print(f"Defender: {defense.action} / 최종 k {defense.k_final:,}")
     for oid, attr, old, new in defense.generalized:
         print(f"    일반화 {oid} [{attr}] {old} → {new}")

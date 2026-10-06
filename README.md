@@ -9,12 +9,14 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 341개 통과 (LLM 호출은 가짜 client 사용) |
-| 실행 조건 | C0(Defender 없음), C1(공개 전 Defender) |
+| 단위·통합 테스트 | 592개 통과 (LLM 호출은 가짜 client 사용) |
+| 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
+| 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
+| Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
 | C2·C3 (경량 언러닝 규칙 주입) | 미구현 |
 | 정답(GT) 대조 평가 `k_val` | 미구현 (로그 컬럼은 비워 둠) |
 
-모듈별 상세 설명(Risk/Defender 정책, Threshold 선정 근거, Evaluation 로그 컬럼)은 [docs/modules.md](docs/modules.md)에 있습니다.
+모듈별 상세 설명(Risk/Defender 정책, Threshold 선정 근거, Evaluation 로그 컬럼)은 [docs/modules.md](docs/modules.md)에, 온톨로지 계층과 검토가 필요한 항목은 [docs/ontology.md](docs/ontology.md)에 있습니다.
 
 ## 폴더 구조
 
@@ -25,8 +27,9 @@
 | `qi_extractor/` | 양승준 | 응답에서 8개 QI 관찰값 추출, 근거 문구 검증 |
 | `normalizer/` | 양승준 | 관찰값을 기준 집단 표기로 정규화 (MAPPED / PENDING / UNMAPPED) |
 | `attack/` | 양승준 | Seed 레지스트리 적재, 조건 평가, Seed 선택 |
-| `adapters/` | 양승준 | `risk_defender`·`fuzzer` 연결 어댑터 |
-| `orchestrator/` | 양승준 | 턴 루프, 공개 게이트, 응답 재작성, 실행 기록 |
+| `ontology/` | 양승준 (계층 명세 검토: 배성윤) | 8개 QI의 표준 값과 상하위 관계, 기준 집단 매핑, 후보 수 색인, 일반화 탐색 |
+| `adapters/` | 양승준 | `risk_defender`·`fuzzer` 연결 어댑터, 온톨로지 백엔드(`ontology_risk.py`) |
+| `orchestrator/` | 양승준 | 턴 루프, 공개 게이트, 응답 재작성, Coverage 기록, 실행 기록 |
 | `fuzzer/` | 한재이 | k 피드백 → 변형 전략 → Mutation 지시문 |
 | `risk_defender/` | 이유진 | Privacy State, k 계산, 일반화·억제 판정 |
 | `evaluation_v1/` | 이정민 | 실험 로그 스키마, 지표 계산 |
@@ -43,7 +46,8 @@
 3. **추출·정규화** — 원 응답에서 QI를 뽑아 기준 집단 표기로 바꾼다.
 4. **공개 게이트**
    - C0: 원 응답을 그대로 공개한다.
-   - C1: `risk_defender` 판정에 따라 응답을 고쳐 쓰고, 고친 응답에서 다시 추출해 k가 하한 이상인지 확인한다. 끝내 만족하지 못하면 거절 문장을 공개한다.
+   - C1: Defender 판정에 따라 응답을 고쳐 쓰고, 고친 응답에서 다시 추출해 k가 하한 이상인지 확인한다. 끝내 만족하지 못하면 거절 문장을 공개한다.
+   - C1S: C1과 같되 Defender가 매 턴 빈 State에서 판정한다. 누적 State가 방어에 얼마나 기여하는지 보기 위한 대조군이다.
 5. **State 반영** — 공개된 응답에서 나온 관찰만 State에 넣고 k를 갱신한다.
 6. **피드백** — 턴 전후 k를 Fuzzer에 돌려주어 다음 변형 전략을 고른다.
 
@@ -92,7 +96,8 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 341 passed
+python -m pytest -q                     # 592 passed
+python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 
 ## 실행
@@ -100,15 +105,18 @@ python -m pytest -q                     # 341 passed
 ### 전체 실행
 
 ```bash
-python -m orchestrator --target pers1 --conditions C0 C1 --turns 5
+python -m orchestrator --target pers1 --arms C0 C1 --turns 5
+python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turns 5
 ```
 
 | 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
 | `--target` | `pers1` | 대상 persona. 여러 개를 띄어 써서 줄 수 있음 |
-| `--conditions` | `C0 C1` | 실행할 조건 |
+| `--arms` | `C0 C1` | 실행할 갈래. `C1S`를 넣으면 무상태 Defender 대조군도 돌린다 (`--conditions`도 같은 뜻) |
+| `--backend` | `risk_defender` | 위험 계산 방식. `ontology`는 D1 계층으로 8개 QI를 모두 센다 |
 | `--turns` | `5` | 세션당 턴 수 |
-| `--threshold` | `3` | 위험 기준. k가 이 값 이하면 위험 (k_req = 값 + 1) |
+| `--threshold` | `3` | 반드시 지키는 경계. k가 이 값 이하면 위험 (k_req = 값 + 1). `risk_defender`의 억제 기준 |
+| `--generalize-threshold` | `5` | `risk_defender`가 일반화를 시도하기 시작하는 경계. `ontology` 백엔드는 쓰지 않음 |
 | `--population` | `expanded` | `expanded`: 30만 명 / `base`: 원본 300명 |
 | `--rng-seed` | `42` | Seed 선택 난수 |
 | `--defense-rounds` | `2` | 응답 고쳐 쓰기 최대 횟수 |
@@ -123,8 +131,21 @@ python -m orchestrator --target pers1 --conditions C0 C1 --turns 5
 | 파일 | 내용 |
 | --- | --- |
 | `experiment_log.csv` | `evaluation_v1/log_schema_v1.py` 형식의 턴별 기록 (k 전후, 위반·교차 여부, 일반화·억제 여부) |
-| `trace.jsonl` | 턴별 상세 기록 (질문, 원 응답, 추출·정규화, Defender 판정, 재작성, 공개 응답) |
-| `run_config.json` | 실행 설정 (모델, 프롬프트 버전, 기준 집단, Seed 파일 해시, 위험 기준) |
+| `trace.jsonl` | 턴별 상세 기록 (질문, 원 응답, 추출·정규화, Defender 판정, 재작성, 공개 응답, Coverage 판정). 세션 끝에는 Coverage 요약 |
+| `run_config.json` | 실행 설정 (모델, 프롬프트 버전, 기준 집단, Seed 파일 해시, 위험 기준, 백엔드, 온톨로지 버전·해시) |
+
+`experiment_log.csv`의 `defender` 컬럼은 `none` / `risk_defender` / `ontology_d1`이고, 무상태 갈래는 뒤에 `_stateless`가 붙습니다.
+
+### 두 가지 위험 계산 백엔드
+
+| | `risk_defender` (기본) | `ontology` |
+| --- | --- | --- |
+| k 계산 QI | AGE, LOC, OCCP, EDU, REL | 8개 전부 |
+| 계층 | `risk_defender` 내부 규칙 | `ontology/` (나이 5년·10년 구간, 직업 ISCO-08 4단계 등) |
+| Defender | k > 5 허용 / 3 < k ≤ 5 일반화 시도 / k ≤ 3 바로 억제 | 하한 k_floor = min(k_req, 지금 k). 한 단계씩 올려 보고 안 되면 억제 |
+| 구현 | 이유진 파트 코드를 그대로 호출 | `adapters/ontology_risk.py` |
+
+한 번의 실행은 백엔드 하나만 씁니다. 두 방식을 비교하려면 `--experiment-id`를 달리해 두 번 돌립니다.
 
 ### 모듈별 확인
 
@@ -141,10 +162,12 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 
 | 항목 | 현재 값 | 비고 |
 | --- | --- | --- |
-| 위험 기준 | k ≤ 3 (k_req 4) | D1 의사결정 보고서는 k_req 5. 팀 결정 필요 |
+| 위험 기준 | 억제 k ≤ 3 (k_req 4), 일반화 시도 k ≤ 5 | D1 의사결정 보고서는 k_req 5. 팀 결정 필요 |
 | 기준 집단 | 30만 명 | 국가명·관계 상태 표기가 일부 섞여 있음 |
-| k 계산 대상 QI | AGE, LOC, OCCP, EDU, REL | SEX, INC, POB는 추출·기록만 함 |
-| 일반화 계층 | `risk_defender` 계층 | D1 Stage 3 계층(AGE 5년 구간, OCCP ISCO 등)과 다름 |
+| k 계산 대상 QI | 기본 백엔드 5개 / `ontology` 8개 | 기본 백엔드에서 SEX, INC, POB는 추출·기록만 함 |
+| 일반화 계층 | 기본은 `risk_defender` 계층 | D1 Stage 3 계층은 `--backend ontology`로 사용 |
+| 직업 → ISCO 대응표 | `ontology/data/occp_alias_v0.1.csv` (173행) | 기계 초안. 57행은 사람 검토 필요 (`python -m ontology --show-review`) |
+| 억제 시점 | 백엔드마다 다름 | `risk_defender`는 k ≤ 3이면 일반화 없이 억제, D1은 일반화를 먼저 시도 |
 | Target 검색 | persona 코멘트 전체 | 임베딩 top-k 검색은 미적용 |
 | Seed | 117개, 개발 모드 | 사람 검토 전이라 본 실험 모드에서는 적재 거부 |
 

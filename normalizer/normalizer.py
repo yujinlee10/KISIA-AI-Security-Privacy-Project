@@ -43,6 +43,7 @@ class MappingReason(str, Enum):
     NOT_IN_REFERENCE = "NOT_IN_REFERENCE"      # 해석은 됐지만 기준 집단에 없는 값 (k=0 방지)
     NO_RULE = "NO_RULE"                        # 해석 규칙에 걸리지 않음
     OUT_OF_RISK_SCOPE = "OUT_OF_RISK_SCOPE"    # risk_defender가 다루지 않는 QI
+    DEFENDER_INSTRUCTED = "DEFENDER_INSTRUCTED"  # 고쳐 쓴 응답의 일반화 표현을 규칙으로 읽지 못해, Defender가 지시한 값으로 기록
 
 
 @dataclass(frozen=True)

@@ -28,14 +28,15 @@ def defend_candidate_qis(
     current_state: PrivacyState,
     candidate_qis: list[QIObservation],
     *,
-    threshold: int,
+    generalize_threshold: int = 5,  # k ≤ 이 값이면 일반화 시도
+    suppress_threshold: int = 3,    # k ≤ 이 값이면 억제
     min_confidence: float = 0.5,
 ) -> DefenseDecision:
     projected = evaluate_projected_risk(
         population,
         current_state,
         candidate_qis,
-        threshold=threshold,
+        threshold=generalize_threshold,
         min_confidence=min_confidence,
     )
     if not projected.risky:
@@ -59,7 +60,8 @@ def defend_candidate_qis(
             "action": "defense_started",
             "reason": "threshold_crossed",
             "k_after_raw": projected.k_after,
-            "threshold": threshold,
+            "generalize_threshold": generalize_threshold,
+            "suppress_threshold": suppress_threshold,
         }
     ]
     working_state = current_state
@@ -69,7 +71,8 @@ def defend_candidate_qis(
             population,
             working_state,
             qi,
-            threshold=threshold,
+            generalize_threshold=generalize_threshold,
+            suppress_threshold=suppress_threshold,
             min_confidence=min_confidence,
         )
         if defended_qi is None:
@@ -79,6 +82,7 @@ def defend_candidate_qis(
                     "action": "suppress",
                     "qi_type": qi.qi_type,
                     "value": qi.value,
+                    "reason": "k_below_suppress_threshold",
                 }
             )
             continue
@@ -106,7 +110,7 @@ def defend_candidate_qis(
             population,
             working_state,
             [defended_qi],
-            threshold=threshold,
+            threshold=generalize_threshold,
             min_confidence=min_confidence,
         )
         working_state = step.state_after
@@ -115,7 +119,7 @@ def defend_candidate_qis(
         population,
         current_state,
         [*safe_qis, *[QIObservation(item["qi_type"], item["to"]) for item in generalized_qis]],
-        threshold=threshold,
+        threshold=generalize_threshold,
         min_confidence=min_confidence,
     )
     final_action = "suppress" if suppressed_qis and not safe_qis and not generalized_qis else "generalize"
@@ -137,21 +141,47 @@ def _find_safe_generalization(
     state: PrivacyState,
     qi: QIObservation,
     *,
-    threshold: int,
+    generalize_threshold: int,
+    suppress_threshold: int,
     min_confidence: float,
 ) -> QIObservation | None:
+    # raw QI 추가 시 k가 suppress_threshold 이하면 일반화 없이 바로 억제
+    raw_projected = evaluate_projected_risk(
+        population,
+        state,
+        [qi],
+        threshold=suppress_threshold,
+        min_confidence=min_confidence,
+    )
+    if raw_projected.k_after <= suppress_threshold:
+        return None
+
+    # suppress_threshold < k ≤ generalize_threshold → 일반화 시도 (가장 구체적인 것부터)
     candidates = [qi, *generalization_chain(qi)]
     for candidate in candidates:
         projected = evaluate_projected_risk(
             population,
             state,
             [candidate],
-            threshold=threshold,
+            threshold=generalize_threshold,
             min_confidence=min_confidence,
         )
-        if projected.k_after > threshold:
+        if projected.k_after > generalize_threshold:
             return candidate
-    return None
+
+    # generalize_threshold 달성 불가 시, suppress_threshold 초과 여부로 억제 결정
+    for candidate in candidates:
+        projected = evaluate_projected_risk(
+            population,
+            state,
+            [candidate],
+            threshold=suppress_threshold,
+            min_confidence=min_confidence,
+        )
+        if projected.k_after > suppress_threshold:
+            return candidate
+
+    return None  # 어떤 일반화도 suppress_threshold 초과 불가 → 억제
 
 
 def generalization_chain(qi: QIObservation) -> list[QIObservation]:

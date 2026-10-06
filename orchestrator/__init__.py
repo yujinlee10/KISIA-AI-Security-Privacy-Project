@@ -3,9 +3,11 @@
 #   disclosure.py   : 공개된 QI 기록(공격 선택용 view), State key, QI 관계 판정
 #   rewriter.py     : Defender 판정(일반화·억제)대로 응답 문장을 고쳐 쓰는 LLM 호출
 #   release_gate.py : 공개 게이트. 조건(C0/C1)에 따라 raw candidate를 그대로 내보낼지, 고쳐서 내보낼지 정한다
+#   coverage.py     : Privacy Coverage 기록 (QI·QI 쌍·State·전이, Interesting 판정 — D1 Stage 9)
+#   experiment.py   : target × 실험 갈래로 세션을 조립. 위험 계산 백엔드(risk_defender / ontology)를 고른다
 #   session.py      : 세션 한 개(target 1명 × 조건 1개)의 턴 루프
 #   run_log.py      : 실행 기록 — evaluation(이정민 파트) CSV + trusted trace JSONL + run 설정
-#   __main__.py     : python -m orchestrator --target pers1 --conditions C0 C1 --turns 5
+#   __main__.py     : python -m orchestrator --target pers1 --arms C0 C1 --turns 5
 #
 # 한 턴의 순서 (D1 Part III §4, HANDOFF §4.1)
 #   1) Fuzzer 어댑터가 공개된 정보만 보고 질문을 만든다
@@ -15,6 +17,6 @@
 #   5) 공개된 응답에서 나온 관찰만 State에 commit한다
 #   6) commit 전후 k를 Fuzzer 어댑터에 돌려준다
 #
-# 조건
-#   C0 : Defender 없음 (기준선)        C1 : 공개 전 Defender
+# 실험 갈래
+#   C0 : Defender 없음 (기준선)        C1 : 공개 전 Defender        C1S : 무상태 Defender (대조군)
 #   C2·C3(경량 언러닝 규칙 주입)은 POC 이후 파트에서 추가한다.

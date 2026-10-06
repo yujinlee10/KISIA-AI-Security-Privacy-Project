@@ -53,17 +53,36 @@ def test_state_id_is_stable_and_order_independent():
 
 # ── QI 관계 ───────────────────────────────────────────────
 
+def compare(attribute, existing, candidate):
+    """risk_defender 백엔드와 같은 판단: 도시가 국가보다 구체적이다."""
+    if existing == candidate:
+        return "SAME"
+    if "," in str(existing) and "," not in str(candidate):
+        return "ANCESTOR"
+    if "," in str(candidate) and "," not in str(existing):
+        return "DESCENDANT"
+    return "INCOMPATIBLE"
+
+
 @pytest.mark.parametrize(
-    "before, after, released, expected",
+    "target, before, after, released, expected",
     [
-        ({}, {"LOC": "Switzerland"}, [], "NEW"),
-        ({}, {}, [], "SAME"),                                                             # 아무것도 못 얻음
-        ({"LOC": "Switzerland"}, {"LOC": "Zurich, Switzerland"}, [], "DESCENDANT"),
-        ({"LOC": "Switzerland"}, {"LOC": "Switzerland"}, [obs("LOC", "Switzerland")], "SAME"),
-        ({"LOC": "Zurich, Switzerland"}, {"LOC": "Zurich, Switzerland"}, [obs("LOC", "Switzerland")], "ANCESTOR"),
-        ({"OCCP": "nurse"}, {"OCCP": "nurse"}, [obs("OCCP", "chef")], "INCOMPATIBLE"),
-        ({"LOC": "Switzerland"}, {"LOC": "Switzerland"}, [obs("AGE", "30s")], "SAME"),    # 다른 QI만 나옴
+        ("LOC", {}, {"LOC": "Switzerland"}, [], "NEW"),
+        ("LOC", {}, {}, [], "SAME"),                                                             # 아무것도 못 얻음
+        ("LOC", {"LOC": "Switzerland"}, {"LOC": "Zurich, Switzerland"}, [], "DESCENDANT"),
+        ("LOC", {"LOC": "Switzerland"}, {"LOC": "Switzerland"}, [obs("LOC", "Switzerland")], "SAME"),
+        ("LOC", {"LOC": "Zurich, Switzerland"}, {"LOC": "Zurich, Switzerland"}, [obs("LOC", "Switzerland")], "ANCESTOR"),
+        ("OCCP", {"OCCP": "nurse"}, {"OCCP": "nurse"}, [obs("OCCP", "chef")], "INCOMPATIBLE"),
+        ("LOC", {"LOC": "Switzerland"}, {"LOC": "Switzerland"}, [obs("AGE", "30s")], "SAME"),    # 다른 QI만 나옴
     ],
 )
-def test_qi_relation(before, after, released, expected):
-    assert qi_relation("LOC" if "OCCP" not in before else "OCCP", before, after, released) == expected
+def test_qi_relation(target, before, after, released, expected):
+    assert qi_relation(target, before, after, before, after, released, compare) == expected
+
+
+def test_first_uncommitted_disclosure_is_new_and_later_commit_is_new_for_state():
+    """State에 못 들어간 공개(정규화 실패 등)도 처음이면 NEW다. 다음에 그 QI가 State에 들어가면 State 기준으로 NEW다."""
+    loose = {"LOC": "Busan"}                       # 공개는 됐지만 State에는 없음
+    assert qi_relation("LOC", {}, {}, {}, loose, [], compare) == "NEW"
+    assert qi_relation("LOC", {}, {}, loose, loose, [], compare) == "SAME"
+    assert qi_relation("LOC", {}, {"LOC": "Switzerland"}, loose, {"LOC": "Switzerland"}, [], compare) == "NEW"

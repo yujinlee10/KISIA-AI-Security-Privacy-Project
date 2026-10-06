@@ -156,30 +156,47 @@ def test_zero_match_is_risky(session):
     assert session.project([mapped("OCCP", "astronaut")]).risky is True
 
 
-def test_defend_allows_safe_disclosure(session):
-    outcome = session.defend([mapped("OCCP", "software engineer", oid="o1")])
+# risk_defender 수정본(2026-10-04)의 판정: k > 5 허용 / 3 < k <= 5 일반화 시도 / k <= 3 바로 억제
+
+def test_defend_allows_disclosure_above_generalize_threshold(session):
+    outcome = session.defend([mapped("AGE", "adult", oid="o1")])        # 20~60대 전원 → k = 8
 
     assert outcome.action == "allow"
+    assert outcome.allowed_ids == ("o1",)
+    assert (outcome.k_raw, outcome.k_final) == (8, 8)
+
+
+def test_defend_keeps_value_when_no_generalization_exists_but_k_is_above_suppress_threshold(session):
+    """직업은 일반화 단계가 없다. k = 4 (3 초과)이므로 값은 그대로 공개된다."""
+    outcome = session.defend([mapped("OCCP", "software engineer", oid="o1")])
+
     assert outcome.allowed_ids == ("o1",)
     assert (outcome.k_raw, outcome.k_final) == (4, 4)
     assert outcome.intervened is False
 
 
-def test_defend_generalizes_city_to_country(session):
-    outcome = session.defend([mapped("LOC", "Zurich, Switzerland", oid="o1")])
+def test_defend_generalizes_when_k_is_between_thresholds(session):
+    outcome = session.defend([mapped("AGE", "30s", oid="o1")])          # 그대로면 k = 5 → adult면 8
 
     assert outcome.action == "generalize"
-    assert outcome.generalized == (("o1", "LOC", "Zurich, Switzerland", "Switzerland"),)
-    assert (outcome.k_raw, outcome.k_final) == (3, 5)
+    assert outcome.generalized == (("o1", "AGE", "30s", "adult"),)
+    assert (outcome.k_raw, outcome.k_final) == (5, 8)
     assert session.committed_qis == {}           # defend도 State를 바꾸지 않음
 
 
-def test_defend_generalizes_age_after_commit(session):
-    session.commit([mapped("OCCP", "software engineer")])                # k = 4
-    outcome = session.defend([mapped("AGE", "30s", oid="o2")])          # 그대로면 k = 2
+def test_defend_suppresses_directly_at_or_below_suppress_threshold(session):
+    """취리히는 k = 3. 국가로 일반화하면 5가 되지만, 수정본은 k <= 3이면 일반화를 시도하지 않고 억제한다."""
+    outcome = session.defend([mapped("LOC", "Zurich, Switzerland", oid="o1")])
 
-    assert outcome.generalized == (("o2", "AGE", "30s", "adult"),)
-    assert outcome.k_final == 4
+    assert outcome.action == "suppress"
+    assert outcome.suppressed_ids == ("o1",)
+    assert outcome.generalized == ()
+    assert (outcome.k_raw, outcome.k_final) == (3, 8)
+
+
+def test_generalize_threshold_must_not_be_below_risk_threshold():
+    with pytest.raises(ValueError):
+        RiskConfig(risk_threshold=5, generalize_threshold=4)
 
 
 def test_defend_suppresses_when_no_safe_generalization(session):
@@ -274,3 +291,33 @@ def test_real_expanded_population():
     assert population.size == 300_000
     session = RiskSession(population, "pers1", "real")
     assert session.k_current == 300_000
+
+
+# ──────────────────────────────────────────────────────────────
+# orchestrator가 쓰는 공통 메서드 (RiskBackend)
+# ──────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "attribute, existing, candidate, expected",
+    [
+        ("LOC", "Switzerland", "Switzerland", "SAME"),
+        ("LOC", "Switzerland", "Zurich, Switzerland", "DESCENDANT"),
+        ("LOC", "Zurich, Switzerland", "Switzerland", "ANCESTOR"),
+        ("OCCP", "nurse", "chef", "INCOMPATIBLE"),
+    ],
+)
+def test_relation(session, attribute, existing, candidate, expected):
+    assert session.relation(attribute, existing, candidate) == expected
+
+
+def test_fresh_session_shares_population_but_not_state(session):
+    session.commit([mapped("LOC", "Switzerland")])
+    other = session.fresh()
+    assert (session.k_current, other.k_current) == (5, 8)
+    assert other.committed_qis == {} and other.config == session.config
+
+
+def test_legacy_backend_defaults(session):
+    assert session.backend_name == "risk_defender"
+    assert session.refinable_qis is None
+    assert session.display_value("LOC", "Switzerland") == "Switzerland"

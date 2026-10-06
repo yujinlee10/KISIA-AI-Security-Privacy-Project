@@ -82,3 +82,16 @@ def test_o2_applies_only_when_more_specific_value_exists():
     assert evaluate(O2_LOC, "LOC", {}, 1) is False                                    # 공개 전
     assert evaluate(O2_LOC, "LOC", {"LOC": "Switzerland"}, 1) is True                 # 국가 → 도시로 좁힐 여지
     assert evaluate(O2_LOC, "LOC", {"LOC": "Zurich, Switzerland"}, 1) is False        # 이미 도시
+
+
+# ── 백엔드가 알려주는 '더 구체화 가능' 목록 ─────────────────
+
+def test_refinable_qis_override_default_descendant_rule():
+    """온톨로지 백엔드의 값(node_id)은 기본 규칙으로 판단할 수 없다. 백엔드가 준 목록을 따른다."""
+    conditions, _ = parse_conditions("AGE active AND active_node_has_descendant = true")
+    committed = {"AGE": "30대 (30s)"}
+
+    assert evaluate(conditions, "AGE", committed, 0) is False                               # 기본 규칙: 30s는 더 못 내려감
+    assert evaluate(conditions, "AGE", committed, 0, frozenset({"AGE"})) is True            # 온톨로지: 5년 구간·정확한 나이가 있다
+    assert evaluate(conditions, "AGE", committed, 0, frozenset()) is False
+    assert evaluate(conditions, "AGE", {}, 0, frozenset({"AGE"})) is False                  # 공개된 값이 없으면 해당 없음
