@@ -316,3 +316,49 @@ def test_georgia_is_resolved_by_where_the_city_is(georgia_parser):
 def test_city_spelling_variants_share_one_node(georgia_parser):
     assert georgia_parser.node_count("LOC:CN:beijing") == 2
     assert georgia_parser.parser.parse("LOC", "Bejiing, China").node_id == "LOC:CN:beijing"
+
+
+# ── 10/06 실제 실행에서 나온 표현들 ───────────────────────
+
+@pytest.mark.parametrize(
+    "texts, expected",
+    [
+        (("대략 30대 초중반(28-35세)", "early 30s"), "AGE:10Y30"),          # 원문 범위가 넓으므로 10년 구간까지만
+        (("대략 30대 중후반 (35-40세 전후)", "mid-to-late 30s"), "AGE:10Y30"),
+        (("30대 초중반", "early 30s"), "AGE:5Y30"),                          # 원문과 표준 표기가 어긋나지 않으면 그대로
+    ],
+)
+def test_age_with_wider_range_in_the_original_wording(parser, texts, expected):
+    assert parser.parse("AGE", *texts).node_id == expected
+
+
+@pytest.mark.parametrize("texts", [("25-35세 사이", "25-35"), ("20대 후반에서 30대 초반", "late 20s to early 30s")])
+def test_age_across_two_decades_stays_ambiguous(parser, texts):
+    parsed = parser.parse("AGE", *texts)
+    assert parsed.node_id is None and parsed.reason == "AMBIGUOUS"
+
+
+def test_two_places_in_one_phrase_are_not_collapsed_to_one_country(parser):
+    """"중서부, 스위스"를 출생지 스위스로 기록했던 경우. 두 곳을 나열한 표현은 정하지 않는다."""
+    parsed = parser.parse("POB", "중서부, 스위스")
+    assert parsed.node_id is None and set(parsed.node_ids) == {"POB:C:CH", "POB:C:US"}
+
+
+@pytest.mark.parametrize(
+    "attribute, texts, expected",
+    [
+        ("POB", ("미국 중서부",), "POB:C:US"),
+        ("POB", ("미국 중서부(오대호 지역)",), "POB:C:US"),
+        ("POB", ("the Midwest",), "POB:C:US"),
+        ("LOC", ("Great Lakes region",), "LOC:C:US"),
+        ("LOC", ("Unknownville, Switzerland",), "LOC:C:CH"),      # 목록에 없는 도시 + 국가는 그대로 국가까지
+    ],
+)
+def test_region_names_resolve_to_a_country(parser, attribute, texts, expected):
+    assert parser.parse(attribute, *texts).node_id == expected
+
+
+@pytest.mark.parametrize("text", ["스위스 또는 유럽", "기술 업계가 발달한 지역", "도시 지역", "더 조용한 지역",
+                                  "outside the United States", "미국이 아닌 곳"])
+def test_vague_or_alternative_places_are_left_unresolved(parser, text):
+    assert parser.parse("LOC", text).node_ids == ()

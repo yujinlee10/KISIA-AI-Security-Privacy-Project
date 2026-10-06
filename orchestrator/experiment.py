@@ -21,13 +21,14 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
 from adapters.fuzzer_adapter import FUZZER_SYSTEM_PROMPT_FILE, FuzzerAdapter, FuzzerConfig
+from adapters.replay_fuzzer import ReplayFuzzer, queries_of
 from adapters.ontology_risk import OntologyRiskSession, build_population_index
 from adapters.risk_adapter import ReferencePopulation, RiskBackend, RiskConfig, RiskSession
 from attack.registry import SeedRegistry
@@ -68,6 +69,10 @@ class ExperimentConfig:
     gate               → 공개 게이트 설정 (고쳐 쓰기 횟수, 거절 문장)
     max_stale_turns    → k 변화 없는 턴이 이만큼 이어지면 새 Seed
     restrict_seeds_to_counted_qis → 백엔드가 k에 넣는 QI를 노리는 Seed만 고를지 (기본 True)
+    paired_questions   → True면 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던진다.
+                         갈래 간 차이에서 "질문이 달라서 생긴 차이"를 없애기 위한 설정이다.
+                         나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않으므로 적응형 공격의 결과는 아니다
+    fuzzer             → 질문 생성 설정 (자료 범위 안내, 변형 결과 검사, QI 고른 배분). None이면 기본값
     target / extractor / rewriter → 각 LLM 호출의 prompt 버전·temperature
     output_root        → 결과를 둘 상위 폴더 (기본 <프로젝트>/runs)
     """
@@ -81,6 +86,8 @@ class ExperimentConfig:
     gate: GateConfig = GateConfig()
     max_stale_turns: int | None = 2
     restrict_seeds_to_counted_qis: bool = True
+    paired_questions: bool = False
+    fuzzer: FuzzerConfig | None = None
     target: TargetConfig = TargetConfig()
     extractor: ExtractorConfig = ExtractorConfig()
     rewriter: RewriterConfig = RewriterConfig()
@@ -194,29 +201,49 @@ def run_experiment(
     logger.write_config(describe_run(config, population, retriever, registry,
                                      getattr(client, "model", None), settings_description, engine))
 
-    fuzzer_config = FuzzerConfig(risk_threshold=config.risk.risk_threshold,
-                                 max_stale_turns=config.max_stale_turns)
+    fuzzer_config = fuzzer_config_of(config)
     results: list[SessionResult] = []
     for target_id in config.target_ids:
+        lead: SessionResult | None = None       # paired_questions일 때 질문을 만든 첫 갈래의 결과
         for arm in config.arms:
             session_id = f"{config.experiment_id}-{target_id}-{arm.label}"
+            paired = config.paired_questions and lead is not None
+            if paired:
+                queries = queries_of([turn.attack for turn in lead.turns])
+                if not queries:                 # 첫 갈래가 한 턴도 못 돌았으면 던질 질문이 없다
+                    continue
+                fuzzer: Any = ReplayFuzzer(queries, config.risk.risk_threshold, label="PAIRED")
+                max_turns = len(queries)
+            else:
+                fuzzer = FuzzerAdapter(SeedSelector(registry, rng_seed=config.rng_seed), client, fuzzer_config)
+                max_turns = config.max_turns
             runner = SessionRunner(
                 parts,
                 engine.new_session(target_id, session_id),
-                FuzzerAdapter(SeedSelector(registry, rng_seed=config.rng_seed), client, fuzzer_config),
+                fuzzer,
                 arm,
                 restrict_seeds_to_counted_qis=config.restrict_seeds_to_counted_qis,
             )
+            extra = {"questions_from": lead.arm.label} if paired else None
 
-            def handle(record: TurnRecord, target_id: str = target_id, arm: Arm = arm) -> None:
-                logger.log_turn(target_id, arm, record)
+            def handle(record: TurnRecord, target_id: str = target_id, arm: Arm = arm,
+                       extra: dict[str, Any] | None = extra) -> None:
+                logger.log_turn(target_id, arm, record, extra=extra)
                 if on_turn is not None:
                     on_turn(target_id, arm, record)
 
-            result = runner.run(target_id, max_turns=config.max_turns, on_turn=handle)
-            logger.log_session_end(result)
+            result = runner.run(target_id, max_turns=max_turns, on_turn=handle)
+            logger.log_session_end(result, extra=extra)
             results.append(result)
+            if lead is None:
+                lead = result
     return results
+
+
+def fuzzer_config_of(config: ExperimentConfig) -> FuzzerConfig:
+    """실험 설정의 위험 기준·stale 한도를 질문 생성 설정에 맞춰 넣는다."""
+    return replace(config.fuzzer or FuzzerConfig(), risk_threshold=config.risk.risk_threshold,
+                   max_stale_turns=config.max_stale_turns)
 
 
 def build_session_parts(config: ExperimentConfig, client: Any, retriever: Retriever,
@@ -274,6 +301,8 @@ def describe_run(config: ExperimentConfig, population: ReferencePopulation, retr
         "fuzzer": {
             "max_stale_turns": config.max_stale_turns,
             "restrict_seeds_to_counted_qis": config.restrict_seeds_to_counted_qis,
+            "paired_questions": config.paired_questions,
+            **fuzzer_config_of(config).describes,
             "system_prompt_file": str(FUZZER_SYSTEM_PROMPT_FILE.relative_to(PROJECT_ROOT)),
             "system_prompt_sha256": _sha256(FUZZER_SYSTEM_PROMPT_FILE),
         },

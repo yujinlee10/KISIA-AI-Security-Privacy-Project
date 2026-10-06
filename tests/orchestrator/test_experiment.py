@@ -204,3 +204,56 @@ def test_ontology_backend_runs_the_same_script(tmp_path, registry):
     rows = read_csv(config)
     assert {r["defender"] for r in rows if r["condition"] == "C1"} == {"ontology_d1"}
     assert rows[5]["generalized"] == "True" and rows[5]["suppressed"] == "True"
+
+
+# ── 갈래 간 같은 질문 사용 ────────────────────────────────
+
+def run_paired(tmp_path, registry, arms=ARMS, script=None):
+    config = ExperimentConfig(experiment_id="exp_paired", target_ids=(TARGET_ID,), arms=arms, max_turns=3,
+                              risk=RiskConfig(risk_threshold=3), output_root=tmp_path, paired_questions=True)
+    client = RoleClient(script or [RAW_T1, RAW_T2, RAW_T3] * len(arms))
+    results = run_experiment(config, client=client, population=make_population(), retriever=OneCommentRetriever(),
+                             registry=registry)
+    return config, results, client
+
+
+def test_paired_arms_ask_the_first_arms_questions(tmp_path, registry):
+    config, results, client = run_paired(tmp_path, registry)
+    lead = [t.attack.query for t in results[0].turns]
+    assert all([t.attack.query for t in result.turns] == lead for result in results[1:])
+    assert client.count("fuzzer") == 3                          # 질문은 첫 갈래에서만 만든다
+    assert {t.attack.reset_reason for t in results[1].turns} == {"PAIRED"}
+    assert [t.attack.seed_id for t in results[1].turns] == [t.attack.seed_id for t in results[0].turns]
+
+
+def test_paired_arms_still_judge_on_their_own_state(tmp_path, registry):
+    """질문만 같고 응답 공개·State는 갈래마다 따로다. C0는 k_req 아래로 내려가고 C1은 막는다."""
+    _, (c0, c1, _), _ = run_paired(tmp_path, registry)
+    assert c0.first_violation_turn(4) is not None and c1.first_violation_turn(4) is None
+    assert c1.k_min >= 4
+
+
+def test_paired_run_is_recorded_in_trace_and_config(tmp_path, registry):
+    config, _, _ = run_paired(tmp_path, registry)
+    trace = read_trace(config)
+    assert [item.get("questions_from") for item in trace if item["type"] == "session_end"] == [None, "C0", "C0"]
+    written = json.loads((config.run_dir / CONFIG_FILE_NAME).read_text(encoding="utf-8"))
+    assert written["fuzzer"]["paired_questions"] is True and written["fuzzer"]["balance_qis"] is True
+    assert written["fuzzer"]["target_scope_note_sha256"]
+
+
+def test_paired_follower_stops_where_the_lead_stopped(tmp_path, registry):
+    """첫 갈래가 2턴에서 Target 오류로 멈추면 나머지 갈래도 그 2개 질문만 던진다."""
+    from core.llm_client import LLMError
+
+    config = ExperimentConfig(experiment_id="exp_short", target_ids=(TARGET_ID,), arms=ARMS[:2], max_turns=3,
+                              risk=RiskConfig(risk_threshold=3), output_root=tmp_path, paired_questions=True)
+    client = RoleClient([RAW_T1, RAW_T2, RAW_T3, RAW_T1, RAW_T2], fail_on={("target", 3): LLMError("boom")})
+    results = run_experiment(config, client=client, population=make_population(), retriever=OneCommentRetriever(),
+                             registry=registry)
+    assert [len(result.turns) for result in results] == [2, 2]
+
+
+def test_unpaired_run_has_no_question_source(run):
+    config, _, _ = run
+    assert all("questions_from" not in item for item in read_trace(config))

@@ -103,10 +103,29 @@ class Parser:
 
     def _age(self, texts: list[str]) -> Parsed:
         found: set[str] = set()
+        per_text: list[set[str]] = []
         for text in texts:
-            found.update(_age_nodes(text.lower()))
-        nodes = [node for node in found if node in self._ontology]
-        return self._finish("AGE", nodes, "RULE_MATCH")
+            nodes_of_text = {node for node in _age_nodes(text.lower()) if node in self._ontology}
+            per_text.append(nodes_of_text)
+            found.update(nodes_of_text)
+        parsed = self._finish("AGE", found, "RULE_MATCH")
+        if parsed.reason != "AMBIGUOUS":
+            return parsed
+        # 표현들이 서로 다른 구간을 가리킬 때 ("30대 초중반(28-35세)" + "early 30s"):
+        # 뒤에 온 표현(추출기의 표준 표기)이 한 구간으로 읽히면 그 구간이 속한 10년 구간까지만 인정한다.
+        # 5년 구간으로 좁히지 않는 것은 원문이 그보다 넓은 범위를 말했기 때문이다.
+        for nodes_of_text in reversed(per_text):
+            single = self._finish("AGE", nodes_of_text, "RULE_MATCH")
+            if single.node_id is not None:
+                node_id = single.node_id
+                while self._ontology.node(node_id).level != "10y":
+                    parent = self._ontology.parent(node_id)
+                    if parent is None or self._ontology.node(parent).is_root:
+                        break
+                    node_id = parent
+                if self._ontology.node(node_id).level == "10y":
+                    return Parsed((node_id,), "RULE_MATCH")
+        return parsed
 
     # ── LOC · POB ────────────────────────────────────────
 
@@ -137,6 +156,11 @@ class Parser:
             if len(matches) == 1:
                 return Parsed((matches[0],), "EXACT_MATCH")
             if len(candidates) == 1 and not matches:
+                # 앞부분이 다른 나라의 지역이면 ("중서부, 스위스") 두 곳을 나열한 것이다. 한 나라로 정하지 않는다
+                other = [iso for iso in self._area_isos(parts[0]) if iso not in candidates]
+                if other:
+                    return Parsed(tuple(sorted(country_id(attribute, iso) for iso in (*candidates, *other))),
+                                  "AMBIGUOUS")
                 return Parsed((country_id(attribute, candidates[0]),), "COUNTRY_MATCH")   # 목록에 없는 도시 → 국가까지만
             nodes = matches or [country_id(attribute, iso) for iso in candidates]
             return Parsed(tuple(sorted(nodes)), "AMBIGUOUS")
@@ -152,7 +176,29 @@ class Parser:
         subdivision = [c for c in region_candidates(parts[0], {}) ]
         if len(subdivision) == 1:
             return Parsed((country_id(attribute, subdivision[0]),), "COUNTRY_MATCH")     # "Texas" → 미국
+        # "미국 중서부", "the Midwest"처럼 나라 이름이나 널리 쓰이는 권역 이름이 섞인 표현
+        if not _GEO_UNCERTAIN.search(text.lower()):
+            isos = self._area_isos(parts[0])
+            if len(isos) == 1:
+                return Parsed((country_id(attribute, isos[0]),), "COUNTRY_MATCH")
+            if len(isos) > 1:
+                return Parsed(tuple(sorted(country_id(attribute, iso) for iso in isos)), "AMBIGUOUS")
         return Parsed((), "NOT_IN_REFERENCE")
+
+    def _area_isos(self, text: str) -> tuple[str, ...]:
+        """표현 안에 들어 있는 나라·주·권역 이름이 가리키는 국가들 (온톨로지에 있는 국가만, 중복 없이)."""
+        lowered = place_key(text)
+        found: list[str] = []
+        for iso in region_candidates(lowered, self._countries):
+            found.append(iso)
+        for word in re.split(r"[\s/·]+", lowered):
+            for iso in region_candidates(word.strip("()'\"의"), self._countries):
+                found.append(iso)
+        for name, iso in _AREA_HINTS.items():
+            if name in lowered:
+                found.append(iso)
+        unique = [iso for position, iso in enumerate(found) if iso not in found[:position]]
+        return tuple(iso for iso in unique if country_id("LOC", iso) in self._ontology)
 
     # ── OCCP ─────────────────────────────────────────────
 
@@ -197,6 +243,14 @@ def _key(text: str) -> str:
 #   범위         : 두 나이를 모두 담는 가장 좁은 구간. 10년 구간을 넘으면 양쪽 구간이 후보가 되어 모호 처리된다
 #   읽지 않는 것 : "60세 이상", "30세 미만", "over 60"처럼 한쪽이 열린 범위 (맞는 node가 없다), "20세기"
 # ──────────────────────────────────────────────────────────────
+
+# 나라보다 넓거나 좁은 권역 이름 가운데 한 나라로 읽을 수 있는 것 (응답에 자주 나온 표현만. 필요하면 늘린다)
+_AREA_HINTS = {
+    "midwest": "US", "중서부": "US", "great lakes": "US", "오대호": "US", "그레이트 레이크": "US",
+    "new england": "US", "뉴잉글랜드": "US", "east coast": "US", "west coast": "US", "silicon valley": "US", "실리콘밸리": "US",
+}
+# 여러 곳을 놓고 고르는 표현이나 부정 표현이면 나라를 정하지 않는다
+_GEO_UNCERTAIN = re.compile(r"또는|혹은|이나\s|\bor\b|아닌|아니|외의|밖|outside|not\s|either|유럽|europe|아시아|asia")
 
 _PAIRED = re.compile(r"^(.+?)\s*\((.+)\)$")
 _ISCO_CODE = re.compile(r"isco(?:[-\s]?08)?[\s:#]*(\d{1,4})\b", re.IGNORECASE)

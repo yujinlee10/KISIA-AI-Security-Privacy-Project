@@ -19,7 +19,9 @@ DEFAULT_RUNS_ROOT = PROJECT_ROOT / "runs"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="실행 결과를 정답과 대조해 k_val을 계산 (LLM 호출 없음)")
+    parser = argparse.ArgumentParser(
+        description="실행 결과를 정답과 대조해 k_val을 계산 (LLM 호출 없음)",
+        epilog="예: python -m validation run_rd2 run_onto2")
     parser.add_argument("experiment_ids", nargs="+", help="runs/ 아래 실행 폴더 이름")
     parser.add_argument("--runs-root", default=str(DEFAULT_RUNS_ROOT))
     args = parser.parse_args()
@@ -29,6 +31,11 @@ def main() -> None:
 
     for experiment_id in args.experiment_ids:
         run_dir = Path(args.runs_root) / experiment_id
+        missing = [name for name in ("run_config.json", "trace.jsonl") if not (run_dir / name).exists()]
+        if missing:
+            print(f"\n건너뜀: {run_dir}에 {', '.join(missing)}이(가) 없습니다. 폴더 이름이 맞는지(ls {args.runs_root}), "
+                  "그 실행이 끝까지 돌았는지 확인하세요.")
+            continue
         config = json.loads((run_dir / "run_config.json").read_text(encoding="utf-8"))
         mode = (config.get("population") or {}).get("mode", "expanded")
         backend = (config.get("backend") or {}).get("name", "risk_defender")

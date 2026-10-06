@@ -301,3 +301,14 @@ def test_scope_falls_back_to_other_seeds_instead_of_stopping(registry):
     assert selector.applicable(view) == ()
     seed, count = selector.choose(view)
     assert seed is not None and seed.target_qi not in exhausted and count > 0
+
+
+def test_report_shows_question_source_and_rejected_mutations(tmp_path, registry):
+    config = ExperimentConfig(experiment_id="paired", target_ids=(TARGET_ID,), arms=ARMS, max_turns=3,
+                              risk=RiskConfig(risk_threshold=3), output_root=tmp_path, paired_questions=True)
+    run_experiment(config, client=RoleClient(SCRIPT * 2), population=make_population(),
+                   retriever=OneCommentRetriever(), registry=registry)
+    report = load_run(config.run_dir)
+    assert [s.questions_from for s in report.sessions] == [None, "C0"]
+    text = render(report)
+    assert "C0의 질문 그대로" in text and "| 갈래 간 같은 질문 | True |" in text

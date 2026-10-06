@@ -73,9 +73,10 @@ class SeedSelector:
         return evaluate(seed.conditions, seed.target_qi, view.committed_qis, view.prior_turns, view.refinable_qis,
                         view.unresolved_qis)
 
-    def choose(self, view: AttackStateView) -> tuple[Seed | None, int]:
+    def choose(self, view: AttackStateView, *,
+               qi_turns: Mapping[str, int] | None = None) -> tuple[Seed | None, int]:
         """
-        input : view
+        input : view, qi_turns (QI별로 지금까지 질문에 쓴 턴 수. 주면 가장 적게 물은 QI의 Seed 중에서 고른다)
         output : (고른 Seed 또는 None, 조건을 만족한 Seed 수)
 
         만족하는 Seed가 없으면 None이다. 호출 측은 이를 D1 종료 사유 NO_APPLICABLE_ACTION으로 처리한다.
@@ -86,7 +87,11 @@ class SeedSelector:
             candidates = self.applicable(replace(view, target_qi_scope=None))
         if not candidates:
             return None, 0
-        return self._rng.choice(candidates), len(candidates)
+        pool = candidates
+        if qi_turns is not None:
+            fewest = min(qi_turns.get(seed.target_qi, 0) for seed in candidates)
+            pool = tuple(seed for seed in candidates if qi_turns.get(seed.target_qi, 0) == fewest)
+        return self._rng.choice(pool), len(candidates)
 
     def bind(self, seed: Seed, view: AttackStateView) -> str:
         """

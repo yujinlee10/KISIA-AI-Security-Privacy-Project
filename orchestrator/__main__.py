@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import time
 
+from adapters.fuzzer_adapter import FuzzerConfig
 from adapters.risk_adapter import PopulationMode, RiskConfig, load_reference_population
 from attack.registry import SeedRegistry
 from core.config import get_settings
@@ -52,6 +53,9 @@ def main() -> None:
         restrict_seeds_to_counted_qis=not args.all_seeds,
         target=TargetConfig(temperature=None if args.temperature < 0 else args.temperature),
         extractor=ExtractorConfig(prompt_version=args.extractor_prompt),
+        paired_questions=args.paired,
+        fuzzer=(FuzzerConfig(target_scope_note=None, out_of_scope_sources=(), balance_qis=False)
+                if args.plain_mutation else None),
     )
 
     if (config.run_dir / "trace.jsonl").exists():
@@ -120,6 +124,11 @@ def _parse_args() -> argparse.Namespace:
                         help="Target 응답 temperature (기본 0: 갈래 간 응답 차이를 줄인다. 음수를 주면 서버 기본값)")
     parser.add_argument("--all-seeds", action="store_true",
                         help="백엔드가 k에 넣지 않는 QI를 묻는 Seed도 고른다 (기본은 k에 넣는 QI의 Seed만)")
+    parser.add_argument("--paired", action="store_true",
+                        help="대상마다 첫 갈래가 만든 질문을 나머지 갈래에 그대로 던진다 (갈래 간 질문 차이를 없앤다)")
+    parser.add_argument("--plain-mutation", action="store_true",
+                        help="질문 생성의 보정을 끈다: Target 자료 범위 안내, 변형 결과의 자료 출처 검사, QI 고른 배분 "
+                             "(Part 8까지의 동작과 비교할 때 쓴다)")
     parser.add_argument("--extractor-prompt", default=DEFAULT_EXTRACTOR_PROMPT,
                         help="추출기 prompt 버전 (qi_extractor/prompts/ 안의 파일 이름)")
     parser.add_argument("--experiment-id", default=None, help="결과 폴더 이름 (기본: poc_날짜_시각)")

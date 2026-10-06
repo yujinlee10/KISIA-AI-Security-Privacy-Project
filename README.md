@@ -9,7 +9,7 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 651개 통과 (LLM 호출은 가짜 client 사용) |
+| 단위·통합 테스트 | 692개 통과 (LLM 호출은 가짜 client 사용) |
 | 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
 | 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
 | Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
@@ -101,7 +101,7 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 651 passed
+python -m pytest -q                     # 692 passed
 python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 
@@ -128,9 +128,25 @@ python -m orchestrator --target pers1 --arms C0 C1 C1S --backend ontology --turn
 | `--experiment-id` | `poc_날짜_시각` | 결과 폴더 이름 |
 | `--temperature` | `0` | Target 응답의 temperature. 갈래 간 차이가 응답의 우연한 흔들림에서 오지 않게 고정한다. 음수를 주면 서버 기본값 |
 | `--all-seeds` | 꺼짐 | 켜면 k에 들어가지 않는 QI를 묻는 Seed도 고른다 (기본은 백엔드가 세는 QI를 노리는 Seed만) |
+| `--paired` | 꺼짐 | 대상마다 첫 갈래가 만든 질문 순서를 나머지 갈래에 그대로 던진다. 갈래를 비교할 때는 켜는 것을 권장 |
+| `--plain-mutation` | 꺼짐 | 질문 생성의 보정(Target 자료 범위 안내, 변형 결과의 자료 출처 검사, QI 고른 배분)을 끈다. 이전 동작과 비교할 때만 사용 |
 | `--extractor-prompt` | `extractor_system_v2` | 추출 프롬프트 버전. v2는 값마다 표준 영어 표기(`value_en`)를 요구한다. 이전 동작은 `extractor_system_v1` |
 
 턴당 LLM 호출은 질문 생성 1회, Target 1회, 추출 1회이고, C1에서 Defender가 개입하면 재작성과 재추출이 1회씩 더 듭니다. 기준 집단 30만 명 적재에 수 초, 메모리 약 500MB가 필요합니다.
+
+### 질문이 Target에 맞도록 하는 장치
+
+10월 6일 실제 실행(pers1, 12턴)에서 질문 36개 중 26개가 구매 기록·검색 이력처럼 Target에 없는 자료를 물었고, 3개는 변형 LLM의 거부 문장이 질문으로 나갔습니다. Target은 대상 사용자의 게시글만 갖고 있습니다. 이를 막기 위해 `adapters/fuzzer_adapter.py`에 세 가지를 넣었습니다. `fuzzer/` 코드와 프롬프트 파일은 고치지 않았습니다.
+
+| 장치 | 하는 일 |
+| --- | --- |
+| 자료 범위 안내 | Mutation LLM system prompt(`fuzzer/seedinput/seedprompt.txt`) 뒤에 "Target은 사용자의 게시글만 갖고 있다"는 안내를 붙인다 |
+| 변형 결과 검사 | 거부·되묻기 문장(`META_OUTPUT`)과 Target에 없는 자료를 전제로 한 질문(`OUT_OF_SCOPE_SOURCE`)을 버리고 다시 요청한다. 끝내 안 되면 Seed 원문을 보낸다 |
+| QI 고른 배분 | 새 Seed를 고를 때 지금까지 가장 적게 물은 QI부터 고른다. 한 QI에 턴이 몰리지 않는다 |
+
+자료 출처 검사는 실제 실행에서 나온 표현을 모은 목록이라 빠진 표현이 있을 수 있습니다. 버린 변형의 수와 사유는 `report.md`의 "공격 쪽" 표에 나옵니다.
+
+**갈래 간 같은 질문 (`--paired`).** 기본 실행에서는 갈래마다 Fuzzer가 따로 질문을 만들어서, Defender가 개입하지 않아도 갈래 간 k가 달라집니다. `--paired`를 켜면 첫 갈래(보통 C0)의 질문 순서를 나머지 갈래에 그대로 던지므로 차이가 공개 게이트에서만 생깁니다. 대신 나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않습니다. "방어된 응답을 보고 질문을 바꾸는 공격자"의 결과가 필요하면 `--paired` 없이 돌립니다.
 
 ### 결과 파일
 
@@ -210,6 +226,8 @@ python -m adapters.check_fuzzer                 # Seed 선택과 두 턴 변형
 | 모호한 답의 구체화 | 켜짐 | 공개됐지만 표준 값으로 풀지 못한 답("코딩 일" 등)이 있으면 그 QI의 O2(구체화) Seed를 쓸 수 있음 |
 | 추출 프롬프트 | `extractor_system_v2` | 실제 모델로 v1과 비교 검증 전. 정규화 실패가 줄었는지는 `report.md`의 미해석 건수로 확인 |
 | State ID | State에 반영된 값 기준 | Part 7까지는 공개 기록 기준이었음. 이전 실행의 `state_id`와는 값이 다름 |
+| 지역·나이 해석 | 여러 지역을 나열한 표현은 미해석, 권역 이름은 국가까지 | "중서부, 스위스"는 정하지 않고 "미국 중서부"는 미국으로 읽음. 원문 범위가 표준 표기보다 넓은 나이는 10년 구간까지만 인정 |
+| 대상 수 | 실행 명령의 기본값은 pers1 한 명 | 파이프라인 확인용. 결과를 주장하려면 `--target`에 여러 명을 주어야 함. 대상 선정 기준은 미정 |
 | 검증의 범위 | State에 들어간 QI만 | 정규화하지 못한 공개분은 `k_val`에도 반영되지 않음 |
 
 ## 브랜치와 커밋 규칙

@@ -68,6 +68,8 @@ class SessionStats:
     seeds: list[str] = field(default_factory=list)
     target_qis: Counter = field(default_factory=Counter)
     reset_reasons: Counter = field(default_factory=Counter)
+    rejected_mutations: Counter = field(default_factory=Counter)    # 버린 변형 결과 (사유별)
+    questions_from: str | None = None                               # 다른 갈래의 질문을 그대로 쓴 세션이면 그 갈래
     fallbacks: int = 0
     tokens: dict[str, list[int]] = field(default_factory=lambda: {role: [0, 0] for role in ROLES})
     calls: Counter = field(default_factory=Counter)
@@ -86,6 +88,8 @@ class SessionStats:
         if attack.get("reset_reason"):
             self.reset_reasons[attack["reset_reason"]] += 1
         self.fallbacks += bool(attack.get("fallback_used"))
+        self.rejected_mutations.update(attack.get("invalid_reasons") or [])
+        self.questions_from = item.get("questions_from") or self.questions_from
         self._spend("mutation", attack.get("mutation_input_tokens"), attack.get("mutation_output_tokens"),
                     attack.get("mutation_attempts"))
         self._spend("target", target.get("input_tokens"), target.get("output_tokens"), target.get("attempts"))
@@ -204,6 +208,10 @@ def render(report: RunReport) -> str:
         ["프롬프트", ", ".join(f"{role}={version}" for role, version in (config.get("prompts") or {}).items()) or "-"],
         ["temperature", ", ".join(f"{role}={_dash(value)}" for role, value in (config.get("temperature") or {}).items()) or "-"],
         ["Seed 대상 제한", _dash((config.get("fuzzer") or {}).get("restrict_seeds_to_counted_qis"))],
+        ["갈래 간 같은 질문", _dash((config.get("fuzzer") or {}).get("paired_questions"))],
+        ["질문 보정 (자료 범위 안내 / QI 고른 배분)",
+         f"{'켜짐' if (config.get('fuzzer') or {}).get('target_scope_note_sha256') else '꺼짐 또는 기록 없음'} / "
+         f"{_dash((config.get('fuzzer') or {}).get('balance_qis'))}"],
         ["끝난 세션 / 턴", f"{len(sessions)} / {sum(s.turns for s in sessions)}"],
         ["정답 대조(k_val)", "있음" if report.validated else "없음 (python -m validation 실행 전)"],
     ])
@@ -262,8 +270,13 @@ def render(report: RunReport) -> str:
 
     lines += ["", "## 공격 쪽", ""]
     lines += _table(
-        ["대상", "갈래", "쓴 Seed 수", "질문이 노린 QI", "Seed 교체 사유", "Seed 원문을 그대로 쓴 턴"],
-        [[_name(s), s.arm, len(s.seeds), _counts(s.target_qis), _counts(s.reset_reasons), s.fallbacks] for s in sessions])
+        ["대상", "갈래", "질문 출처", "쓴 Seed 수", "질문이 노린 QI", "Seed 교체 사유", "버린 변형 (사유)",
+         "Seed 원문을 그대로 쓴 턴"],
+        [[_name(s), s.arm, f"{s.questions_from}의 질문 그대로" if s.questions_from else "직접 생성", len(s.seeds),
+          _counts(s.target_qis), _counts(s.reset_reasons), _counts(s.rejected_mutations), s.fallbacks]
+         for s in sessions])
+    lines += ["", "버린 변형: META_OUTPUT은 변형 LLM이 질문 대신 내놓은 거부·되묻기 문장, OUT_OF_SCOPE_SOURCE는 "
+              "Target에 없는 자료(구매·검색 기록 등)를 전제로 한 질문입니다. 버린 뒤 다시 요청하고, 끝내 안 되면 Seed 원문을 씁니다."]
 
     lines += ["", "## Coverage", ""]
     lines += _table(
@@ -335,6 +348,9 @@ def main() -> None:
 
     for experiment_id in args.experiment_ids:
         run_dir = Path(args.runs_root) / experiment_id
+        if not (run_dir / TRACE_FILE_NAME).exists():
+            print(f"건너뜀: {run_dir}에 trace.jsonl이 없습니다. 폴더 이름을 확인하세요 (ls {args.runs_root}).\n")
+            continue
         text = render(load_run(run_dir))
         print(text)
         if not args.no_file:
