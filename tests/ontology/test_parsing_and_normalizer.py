@@ -362,3 +362,47 @@ def test_region_names_resolve_to_a_country(parser, attribute, texts, expected):
                                   "outside the United States", "미국이 아닌 곳"])
 def test_vague_or_alternative_places_are_left_unresolved(parser, text):
     assert parser.parse("LOC", text).node_ids == ()
+
+
+# ── 10/07 열 명 실행에서 나온 표현들 ──────────────────────
+
+@pytest.mark.parametrize(
+    "texts, expected",
+    [
+        (("30대 초중반(대략 30-35세)", "early 30s"), "AGE:10Y30"),   # 적힌 범위가 35세까지 → 30~34세 구간으로 좁히지 않는다
+        (("30대 초반(30-34세)", "early 30s"), "AGE:5Y30"),          # 범위가 같은 5년 구간이면 그대로
+        (("25-28세 범위", "25-28"), "AGE:5Y25"),
+        (("34세 (30-39세 사이)",), "AGE:10Y30"),                    # 정확한 나이와 넓은 범위가 함께 → 범위까지만
+    ],
+)
+def test_age_is_not_read_narrower_than_the_stated_range(parser, texts, expected):
+    assert parser.parse("AGE", *texts).node_id == expected
+
+
+@pytest.mark.parametrize(
+    "texts, expected",
+    [
+        (("대학 이상의 고등 교육", "bachelor's degree"), "EDU:TERTIARY"),      # 실제로는 박사였던 대상
+        (("석사 이상", "master's degree or higher"), "EDU:TERTIARY"),
+        (("at least a bachelor's degree",), "EDU:TERTIARY"),
+        (("학사 학위", "bachelor's degree"), "EDU:COLLEGE"),                   # '이상'이 없으면 그대로
+    ],
+)
+def test_education_at_least_a_level_stops_at_the_group(parser, texts, expected):
+    assert parser.parse("EDU", *texts).node_id == expected
+
+
+@pytest.mark.parametrize("texts", [("고등학교 졸업 이상, 가능하면 대학 교육 경험", "bachelor's degree"),
+                                   ("고등학교 졸업 이상, 대학 교육 이전 수준", "high school diploma"),
+                                   ("at least high school",)])
+def test_education_at_least_high_school_is_left_unresolved(parser, texts):
+    assert parser.parse("EDU", *texts).node_ids == ()
+
+
+@pytest.mark.parametrize("text", ["중산층 하단~중산층 중간 수준 (월평균 소득이 평균 이하~평균 수준)", "low to middle income"])
+def test_income_spanning_two_levels_is_left_unresolved(parser, text):
+    assert parser.parse("INC", text).node_ids == ()
+
+
+def test_income_single_level_still_resolves(parser):
+    assert parser.parse("INC", "중간 정도의 경제적 여유", "middle").node_id == "INC:MIDDLE"

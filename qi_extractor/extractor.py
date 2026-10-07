@@ -244,6 +244,10 @@ def parse_output(text: str) -> list[Any]:
     try:
         body = json.loads(text[start:end + 1])
     except json.JSONDecodeError as exc:
+        # 전체가 깨져도 항목 하나의 문제인 경우가 많다 (근거 문구 안의 따옴표 등). 읽히는 항목만이라도 건진다.
+        salvaged = salvage_items(text[start:end + 1])
+        if salvaged:
+            return salvaged
         raise OutputParseError(f"JSON 해석 실패: {exc.msg}") from None
 
     if not isinstance(body, dict) or "observations" not in body:
@@ -252,6 +256,51 @@ def parse_output(text: str) -> list[Any]:
     if not isinstance(observations, list):
         raise OutputParseError("observations가 배열이 아닙니다.")
     return observations
+
+
+def salvage_items(text: str) -> list[Any]:
+    """
+    input : JSON으로 읽히지 않은 출력 (첫 '{'부터 마지막 '}'까지)
+    output : observations 배열 안에서 따로 읽히는 항목들. 하나도 못 읽으면 빈 목록
+
+    배열 안의 {...} 덩어리를 괄호 짝으로 잘라 하나씩 해석한다. 문자열 안의 괄호는 세지 않는다.
+    읽히지 않는 항목은 버린다 (그 항목의 관찰은 잃지만 나머지 관찰로 위험을 계산할 수 있다).
+    """
+    key = text.find('"observations"')
+    start = text.find("[", key) if key >= 0 else -1
+    if start < 0:
+        return []
+    items: list[Any] = []
+    depth, begin, in_string, escaped = 0, -1, False, False
+    for position in range(start + 1, len(text)):
+        char = text[position]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                begin = position
+            depth += 1
+        elif char == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and begin >= 0:
+                try:
+                    item = json.loads(text[begin:position + 1])
+                except json.JSONDecodeError:
+                    item = None
+                if isinstance(item, dict):
+                    items.append(item)
+                begin = -1
+        elif char == "]" and depth == 0:
+            break
+    return items
 
 
 # ──────────────────────────────────────────────────────────────

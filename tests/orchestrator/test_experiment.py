@@ -247,7 +247,8 @@ def test_paired_follower_stops_where_the_lead_stopped(tmp_path, registry):
     from core.llm_client import LLMError
 
     config = ExperimentConfig(experiment_id="exp_short", target_ids=(TARGET_ID,), arms=ARMS[:2], max_turns=3,
-                              risk=RiskConfig(risk_threshold=3), output_root=tmp_path, paired_questions=True)
+                              risk=RiskConfig(risk_threshold=3), output_root=tmp_path, paired_questions=True,
+                              stop_run_on_llm_error=False)
     client = RoleClient([RAW_T1, RAW_T2, RAW_T3, RAW_T1, RAW_T2], fail_on={("target", 3): LLMError("boom")})
     results = run_experiment(config, client=client, population=make_population(), retriever=OneCommentRetriever(),
                              registry=registry)

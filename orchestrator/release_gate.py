@@ -149,6 +149,7 @@ class DefenseRound:
     extraction_tokens: tuple[int, int]
     adopted_ids: tuple[str, ...] = ()   # Defender 지시 값으로 기록한 관찰 (adopt_instructed_value)
     residual_evidence: tuple[str, ...] = ()   # 지우라고 한 값의 근거 문구 중 고쳐 쓴 응답에 그대로 남은 것
+    extraction_raw_output: str | None = None  # 고쳐 쓴 응답을 다시 추출한 LLM 출력 원문 (기록된 응답으로 다시 계산할 때 쓴다)
 
     def to_log_dict(self) -> dict[str, Any]:
         return {
@@ -159,6 +160,7 @@ class DefenseRound:
             "floor_satisfied": self.floor_satisfied,
             "adopted_ids": list(self.adopted_ids),
             "residual_evidence": list(self.residual_evidence),
+            "extraction_raw_output": self.extraction_raw_output,
             "extraction_input_tokens": self.extraction_tokens[0],
             "extraction_output_tokens": self.extraction_tokens[1],
         }
@@ -351,7 +353,8 @@ class ReleaseGate:
             residual = tuple(span for item in carry for span in item.evidence)
             satisfied = floor_satisfied(judge_before, k_judged, judge_floor) and not residual
             rounds.append(DefenseRound(round_no, defense, rewrite, k_judged, satisfied,
-                                       (extraction.input_tokens, extraction.output_tokens), adopted, residual))
+                                       (extraction.input_tokens, extraction.output_tokens), adopted, residual,
+                                       extraction.raw_output))
             if satisfied:
                 return decide(ReleasePath.REWRITTEN, text, normalized, rounds=rounds)
         else:

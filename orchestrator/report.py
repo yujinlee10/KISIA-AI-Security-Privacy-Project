@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,7 @@ from typing import Any, Iterable
 
 from core.config import PROJECT_ROOT
 from orchestrator.trace_reader import arm_of, iter_sessions, read_jsonl
+from orchestrator.utility import TurnUtility, mean, similarity_floor, turn_utility
 
 DEFAULT_RUNS_ROOT = PROJECT_ROOT / "runs"
 TRACE_FILE_NAME = "trace.jsonl"
@@ -72,6 +74,8 @@ class SessionStats:
     questions_from: str | None = None                               # 다른 갈래의 질문을 그대로 쓴 세션이면 그 갈래
     intervention_reasons: Counter = field(default_factory=Counter)  # Defender가 개입한 이유 (회차별)
     residual_rounds: int = 0                                        # 지운 값의 근거 문구가 남아 다시 고친 회차 수
+    utilities: list[tuple[str, TurnUtility, int]] = field(default_factory=list)   # (공개 경로, 유용성, 원 응답의 QI 수)
+    raw_responses: list[str] = field(default_factory=list)          # 바닥값 계산용 (집계 뒤 버린다)
     fallbacks: int = 0
     tokens: dict[str, list[int]] = field(default_factory=lambda: {role: [0, 0] for role in ROLES})
     calls: Counter = field(default_factory=Counter)
@@ -107,6 +111,13 @@ class SessionStats:
             self.statuses[observation["status"]] += 1
 
         self.paths[release["path"]] += 1
+        raw_text = target.get("raw_candidate_response") or ""
+        raw_attributes = [obs["attribute"] for obs in item.get("raw_normalized") or [] if obs["status"] == "MAPPED"]
+        self.utilities.append((release["path"], turn_utility(
+            raw_text, release.get("released_response") or "", raw_attributes,
+            [obs["attribute"] for obs in release.get("released_observations") or [] if obs["status"] == "MAPPED"]),
+            len(set(raw_attributes))))
+        self.raw_responses.append(raw_text)
         if release.get("refusal_reason"):
             self.refusal_reasons[release["refusal_reason"]] += 1
         self.generalized_turns += bool(release.get("generalized"))
@@ -156,6 +167,7 @@ class RunReport:
     unfinished_turns: int          # session_end 없이 끝난 턴 수 (중간에 멈춘 실행)
     validated: bool
     superseded: int = 0            # 같은 대상·갈래를 다시 돌려 앞의 것이 집계에서 빠진 세션 수
+    similarity_floor: float | None = None   # 서로 다른 질문에 대한 원 응답끼리의 평균 유사도 (유용성 바닥값)
     strata: dict[str, str] = field(default_factory=dict)   # 대상 → 층 (대상 선정 파일을 주었을 때)
 
 
@@ -204,8 +216,11 @@ def load_run(run_dir: str | Path, strata: dict[str, str] | None = None) -> RunRe
     for stats in sessions:
         latest[(stats.target_id, stats.arm, stats.session_key)] = stats
     kept = [stats for stats in sessions if latest[(stats.target_id, stats.arm, stats.session_key)] is stats]
+    floor = similarity_floor([text for stats in kept if stats.questions_from is None for text in stats.raw_responses])
+    for stats in sessions:
+        stats.raw_responses = []
     return RunReport(config.get("experiment_id") or run_dir.name, config, kept, unfinished, validated,
-                     superseded=len(sessions) - len(kept), strata=dict(strata or {}))
+                     superseded=len(sessions) - len(kept), strata=dict(strata or {}), similarity_floor=floor)
 
 
 # ── markdown 출력 ─────────────────────────────────────────
@@ -230,7 +245,7 @@ def render(report: RunReport) -> str:
         ["질문 보정 (자료 범위 안내 / QI 고른 배분)",
          f"{'켜짐' if (config.get('fuzzer') or {}).get('target_scope_note_sha256') else '꺼짐 또는 기록 없음'} / "
          f"{_dash((config.get('fuzzer') or {}).get('balance_qis'))}"],
-        ["끝난 세션 / 턴", f"{len(sessions)} / {sum(s.turns for s in sessions)}"],
+        ["끝난 세션 / 턴", f"{len(sessions)} / {sum(s.turns for s in sessions)} (오류로 끝난 대상 포함)"],
         ["정답 대조(k_val)", "있음" if report.validated else "없음 (python -m validation 실행 전)"],
     ])
     if report.unfinished_turns:
@@ -238,6 +253,15 @@ def render(report: RunReport) -> str:
     if report.superseded:
         lines += ["", f"참고: 같은 대상·갈래를 다시 돌린 기록이 있어 앞의 세션 {report.superseded}개는 집계에서 뺐습니다 "
                   "(대상·갈래마다 마지막으로 끝난 세션만 씁니다)."]
+    broken = [s for s in sessions if s.stop_reason == "LLM_ERROR"]
+    if broken:
+        lines += ["", f"주의: LLM 호출 오류로 중간에 끝난 세션이 {len(broken)}개 있습니다 (API 한도 초과, 연결 실패 등): "
+                  + ", ".join(f"{s.target_id}/{s.arm}({s.turns}턴)" for s in broken)
+                  + ". 턴이 모자란 결과이므로 해당 대상의 세션은 아래 표에서 모두 뺐습니다 "
+                  "(같은 질문을 받은 다른 갈래 포함). "
+                  "원인을 해결한 뒤 같은 명령에 --resume을 붙여 다시 돌리면 이 대상들만 다시 실행합니다."]
+        incomplete = {s.target_id for s in broken}
+        sessions = [s for s in sessions if s.target_id not in incomplete]
     lines += _outcome_section(report)
 
     lines += ["", "## 갈래별 요약", ""]
@@ -274,18 +298,28 @@ def render(report: RunReport) -> str:
           s.residual_rounds, s.adopted, s.unresolved_released]
          for s in sessions])
 
+    lines += _utility_section(report, sessions)
+
     lines += ["", "## 추출·정규화", ""]
     lines += _table(
         ["대상", "갈래", "추출 실패 턴", "근거 불일치로 버린 관찰", "MAPPED", "PENDING", "UNMAPPED", "State에 반영된 관찰 (QI별)"],
         [[_name(s), s.arm, s.extraction_failures, s.rejected_observations, s.statuses["MAPPED"], s.statuses["PENDING"],
           s.statuses["UNMAPPED"], _counts(s.committed_by_qi)] for s in sessions])
-    unresolved = [(s, row) for s in sessions for row in s.unresolved]
-    if unresolved:
-        lines += ["", f"공개됐지만 정규화하지 못한 관찰 {len(unresolved)}건"
-                  + (f" (앞 {MAX_UNRESOLVED_ROWS}건만 표시)" if len(unresolved) > MAX_UNRESOLVED_ROWS else "") + ":", ""]
+    # 같은 원 응답을 함께 쓰는 갈래에서는 같은 관찰이 갈래 수만큼 반복된다. 한 줄로 묶고 갈래를 나란히 적는다
+    merged: dict[tuple[Any, ...], list[str]] = {}
+    for s in sessions:
+        for row in s.unresolved:
+            key = (_name(s), row["turn"], row["attribute"], row["raw_value"], row["value_en"], row["status"], row["reason"])
+            merged.setdefault(key, []).append(s.arm)
+    if merged:
+        total = sum(len(arms) for arms in merged.values())
+        by_reason = Counter((key[2], key[6]) for key in merged)
+        lines += ["", f"공개됐지만 정규화하지 못한 관찰 {total}건 (갈래 간 같은 관찰을 묶으면 {len(merged)}가지)"
+                  + (f", 앞 {MAX_UNRESOLVED_ROWS}가지만 표시" if len(merged) > MAX_UNRESOLVED_ROWS else "") + ":", ""]
         lines += _table(["대상", "갈래", "턴", "QI", "응답의 표현", "추출기 표준 표기", "상태", "이유"],
-                        [[_name(s), s.arm, row["turn"], row["attribute"], row["raw_value"], row["value_en"],
-                          row["status"], row["reason"]] for s, row in unresolved[:MAX_UNRESOLVED_ROWS]])
+                        [[key[0], "·".join(arms), *key[1:]] for key, arms in list(merged.items())[:MAX_UNRESOLVED_ROWS]])
+        lines += ["", "QI·이유별 (묶은 뒤): " + ", ".join(f"{qi} {reason} {count}" for (qi, reason), count
+                                                         in by_reason.most_common())]
 
     lines += ["", "## 공격 쪽", ""]
     lines += _table(
@@ -322,6 +356,78 @@ def render(report: RunReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _utility_rows(sessions: list[SessionStats]) -> list[list[Any]]:
+    rows = []
+    for arm in _ordered(s.arm for s in sessions):
+        turns = [entry for s in sessions if s.arm == arm for entry in s.utilities]
+        if not turns:
+            continue
+        touched = [entry for entry in turns if entry[0] in ("REWRITTEN", "REFUSAL")]
+        rewritten = [entry for entry in turns if entry[0] == "REWRITTEN"]
+        refused = [entry for entry in turns if entry[0] == "REFUSAL"]
+        untouched = [entry for entry in turns if entry[0] not in ("REWRITTEN", "REFUSAL")]
+        rows.append([
+            arm, len(turns), f"{len(untouched)} ({len(untouched) / len(turns):.1%})", len(rewritten), len(refused),
+            _dash(mean(u.similarity for _, u, _ in turns)),
+            _dash(mean(u.similarity for _, u, _ in rewritten)), _dash(mean(u.length_ratio for _, u, _ in rewritten)),
+            _dash(mean(u.qi_retention for _, u, _ in rewritten)),
+            _dash(mean(u.similarity for _, u, _ in refused)),
+            f"{_dash(mean(float(n) for _, _, n in touched))} / {_dash(mean(float(n) for _, _, n in untouched))}",
+        ])
+    return rows
+
+
+def _utility_section(report: RunReport, sessions: list[SessionStats]) -> list[str]:
+    rows = _utility_rows(sessions)
+    if not rows:
+        return []
+    lines = ["", "## 유용성 (Defender가 응답을 고친 대가)", ""]
+    lines += _table(["갈래", "턴", "그대로 공개", "재작성 턴", "거절 턴", "평균 유사도 (전체)", "평균 유사도 (재작성 턴)",
+                     "평균 길이비 (재작성 턴)", "QI 유지율 (재작성 턴)", "평균 유사도 (거절 턴)",
+                     "원 응답의 QI 수: 개입 턴 / 통과 턴"], rows)
+    lines += ["", f"바닥값(서로 다른 질문에 대한 원 응답끼리의 유사도): {_dash(report.similarity_floor)}. "
+              "유사도가 이 값보다 낮으면 원래 답과의 관련이 무관한 답 수준으로 떨어진 것입니다.",
+              "유사도는 원 응답과 공개 응답의 글자 3-gram 코사인 유사도입니다. 글자 겹침을 재는 값이라 뜻이 보존됐는지를 "
+              "직접 말해 주지는 않습니다. QI 유지율은 원 응답에서 풀린 QI 종류 중 공개 응답에 남은 비율이며, "
+              "낮을수록 보호를 위해 많이 덜어냈다는 뜻입니다."]
+    return lines
+
+
+def mcnemar_exact(only_first: int, only_second: int) -> float:
+    """
+    input : only_first (첫 조건에서만 사건이 난 짝의 수), only_second (둘째 조건에서만 난 짝의 수)
+    output : 양측 exact McNemar p값 (이항분포, 불일치 짝만 사용). 불일치 짝이 없으면 1.0
+    """
+    n = only_first + only_second
+    if n == 0:
+        return 1.0
+    tail = sum(math.comb(n, i) for i in range(min(only_first, only_second) + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+
+def paired_tests(report: RunReport) -> list[list[Any]]:
+    """갈래 쌍마다, 같은 대상에서 위반 여부가 어떻게 갈렸는지와 exact McNemar p값."""
+    incomplete = {s.target_id for s in report.sessions if s.stop_reason == "LLM_ERROR"}
+    sessions = [s for s in report.sessions if s.session_key is None and s.target_id not in incomplete]
+    by = {(s.target_id, s.arm): s for s in sessions}
+    arms = _ordered(s.arm for s in sessions)
+    rows = []
+    for i, first in enumerate(arms):
+        for second in arms[i + 1:]:
+            targets = [t for t in _ordered(s.target_id for s in sessions) if (t, first) in by and (t, second) in by]
+            if len(targets) < 2:
+                continue
+            pairs = [(_violated(by[(t, first)], report.validated), _violated(by[(t, second)], report.validated))
+                     for t in targets]
+            both = sum(a and b for a, b in pairs)
+            only_first = sum(a and not b for a, b in pairs)
+            only_second = sum(b and not a for a, b in pairs)
+            rows.append([f"{first} 대 {second}", len(targets), both, only_first, only_second,
+                         len(targets) - both - only_first - only_second,
+                         f"{mcnemar_exact(only_first, only_second):.3f}"])
+    return rows
+
+
 def _violated(session: SessionStats, validated: bool) -> bool:
     """정답 대조가 있으면 k_val 기준, 없으면 실행 중 k_run 기준으로 위반 여부를 본다."""
     if validated and session.validated:
@@ -331,7 +437,8 @@ def _violated(session: SessionStats, validated: bool) -> bool:
 
 def _outcome_section(report: RunReport) -> list[str]:
     """대상별로 갈래의 결과를 나란히 놓고, 갈래 조합별 대상 수를 센다. 대상이 둘 이상일 때만 만든다."""
-    sessions = [s for s in report.sessions if s.session_key is None]
+    incomplete = {s.target_id for s in report.sessions if s.stop_reason == "LLM_ERROR"}
+    sessions = [s for s in report.sessions if s.session_key is None and s.target_id not in incomplete]
     targets = _ordered(s.target_id for s in sessions)
     arms = _ordered(s.arm for s in sessions)
     if len(targets) < 2:
@@ -364,7 +471,48 @@ def _outcome_section(report: RunReport) -> list[str]:
                                                          reverse=True)])
     lines += ["", "대상 수가 적으므로 비율로 일반화하지 않습니다. 층(rich/sparse)은 사람 라벨로 어림한 구분이며 결과 수치가 아닙니다."
               if report.strata else "대상 수가 적으므로 비율로 일반화하지 않습니다."]
+    tests = paired_tests(report)
+    if tests:
+        lines += ["", "같은 대상끼리 짝지은 비교 (exact McNemar, 양측):", ""]
+        lines += _table(["갈래 쌍", "대상 수", "둘 다 위반", "앞 갈래만 위반", "뒤 갈래만 위반", "둘 다 아님", "p"], tests)
+        lines += ["", "p값은 위반 여부가 갈린 대상만으로 계산합니다. 갈린 대상이 5명이면 한쪽으로 전부 쏠려도 p = 0.0625가 "
+                  "가장 작은 값입니다. 대상 수가 적을 때 p가 크게 나오는 것은 차이가 없다는 뜻이 아니라 판단할 표본이 "
+                  "모자라다는 뜻입니다."]
     return lines
+
+
+def render_comparison(reports: list[RunReport]) -> str:
+    """여러 실행(같은 대화에 다른 설정을 적용해 다시 계산한 것 등)을 갈래별로 한 표에 놓는다."""
+    lines = ["# 실행 비교", ""]
+    rows, test_rows = [], []
+    for report in reports:
+        config = report.config
+        incomplete = {s.target_id for s in report.sessions if s.stop_reason == "LLM_ERROR"}
+        sessions = [s for s in report.sessions if s.target_id not in incomplete]
+        risk = config.get("risk") or {}
+        for arm in _ordered(s.arm for s in sessions):
+            group = [s for s in sessions if s.arm == arm]
+            k_vals = [s.k_val_min for s in group if s.validated]
+            utilities = [entry for s in group for entry in s.utilities]
+            rows.append([
+                report.experiment_id, (config.get("backend") or {}).get("name", "-"), _dash(risk.get("k_req")),
+                _dash(risk.get("tau_commit")), arm, len(group),
+                sum(s.first_violation_turn is not None for s in group),
+                sum(s.validated_first_violation_turn is not None for s in group) if k_vals else "-",
+                _spread(k_vals) if k_vals else "-", sum(s.zero_match_turns for s in group),
+                sum(s.paths["REWRITTEN"] for s in group), sum(s.paths["REFUSAL"] for s in group),
+                _dash(mean(u.similarity for _, u, _ in utilities)), sum(s.unresolved_released for s in group),
+            ])
+        test_rows += [[report.experiment_id, *row] for row in paired_tests(report)]
+    lines += _table(["실행", "백엔드", "k_req", "확신도 기준", "갈래", "대상", "위반 (k_run)", "위반 (k_val)",
+                     "최소 k_val 중앙값 (범위)", "k=0 턴", "재작성 턴", "거절 턴", "평균 유사도", "미해석"], rows)
+    lines += ["", "위반 = 1 ≤ k < k_req에 한 번이라도 도달한 대상 수. k_req가 다른 실행끼리는 위반의 기준 자체가 다릅니다.",
+              "'위반 (k_val)'이 '-'인 실행은 정답 대조(python -m validation)를 아직 돌리지 않은 것입니다."]
+    if test_rows:
+        lines += ["", "## 같은 대상끼리 짝지은 비교 (exact McNemar, 양측)", ""]
+        lines += _table(["실행", "갈래 쌍", "대상 수", "둘 다 위반", "앞 갈래만 위반", "뒤 갈래만 위반", "둘 다 아님", "p"],
+                        test_rows)
+    return "\n".join(lines) + "\n"
 
 
 def _table(header: list[str], rows: list[list[Any]]) -> list[str]:
@@ -408,6 +556,8 @@ def main() -> None:
     parser.add_argument("experiment_ids", nargs="+", help="runs/ 아래 실행 폴더 이름")
     parser.add_argument("--runs-root", default=str(DEFAULT_RUNS_ROOT))
     parser.add_argument("--no-file", action="store_true", help="report.md를 쓰지 않고 화면에만 출력")
+    parser.add_argument("--compare", default=None, metavar="FILE",
+                        help="준 실행들을 한 표로 비교해 이 파일(.md)에 저장한다 (실행별 report.md도 함께 만든다)")
     parser.add_argument("--targets-file", default=None,
                         help="대상 선정 파일 (python -m validation.select_targets 결과). 주면 대상별 표에 층을 함께 적는다")
     args = parser.parse_args()
@@ -417,16 +567,28 @@ def main() -> None:
         selection = json.loads(Path(args.targets_file).read_text(encoding="utf-8"))
         strata = {item["target_id"]: item["stratum"] for item in selection.get("targets", [])}
 
+    loaded: list[RunReport] = []
     for experiment_id in args.experiment_ids:
         run_dir = Path(args.runs_root) / experiment_id
         if not (run_dir / TRACE_FILE_NAME).exists():
             print(f"건너뜀: {run_dir}에 trace.jsonl이 없습니다. 폴더 이름을 확인하세요 (ls {args.runs_root}).\n")
             continue
-        text = render(load_run(run_dir, strata))
-        print(text)
+        report = load_run(run_dir, strata)
+        loaded.append(report)
+        text = render(report)
+        if args.compare:
+            print(f"{experiment_id}: 세션 {len(report.sessions)}개 집계")
+        else:
+            print(text)
         if not args.no_file:
             (run_dir / REPORT_FILE_NAME).write_text(text, encoding="utf-8")
             print(f"저장: {run_dir / REPORT_FILE_NAME}\n")
+    if args.compare and loaded:
+        comparison = render_comparison(loaded)
+        print("\n" + comparison)
+        Path(args.compare).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.compare).write_text(comparison, encoding="utf-8")
+        print(f"저장: {args.compare}")
 
 
 if __name__ == "__main__":

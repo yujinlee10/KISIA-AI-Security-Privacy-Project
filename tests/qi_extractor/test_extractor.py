@@ -298,3 +298,24 @@ def test_invalid_config_rejected():
 def test_parse_output_rejects_bad_shapes(text):
     with pytest.raises(OutputParseError):
         parse_output(text)
+
+
+# ── 깨진 JSON에서 읽히는 항목 건지기 ──────────────────────
+
+def test_one_broken_item_does_not_lose_the_others():
+    """근거 문구 안의 따옴표 때문에 전체 JSON이 깨진 출력 (10/07 실행에서 한 턴이 이 때문에 추출 실패로 끝났다)."""
+    from qi_extractor.extractor import parse_output
+
+    broken = ('{"observations": [{"attribute": "AGE", "raw_value": "30대", "evidence_spans": ["a {b} c"]}, '
+              '{"attribute": "LOC", "raw_value": "x", "evidence_spans": ["he said "hi" there"]}, '
+              '{"attribute": "SEX", "raw_value": "남성", "evidence_spans": ["남성"]}]}')
+    assert [item["attribute"] for item in parse_output(broken)] == ["AGE", "SEX"]
+
+
+def test_output_with_no_readable_item_is_still_an_error():
+    from qi_extractor.extractor import OutputParseError, parse_output
+
+    with pytest.raises(OutputParseError):
+        parse_output('{"observations": [{"attribute": "LOC", "evidence_spans": ["he said "hi""]}]}')
+    with pytest.raises(OutputParseError):
+        parse_output('{"observations": oops}')

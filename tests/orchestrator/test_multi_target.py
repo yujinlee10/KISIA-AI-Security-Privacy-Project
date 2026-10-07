@@ -128,3 +128,39 @@ def test_report_shows_why_the_defender_intervened(tmp_path, registry):
     config, _, _, _ = execute(tmp_path, registry, ["p1"])
     c1 = next(s for s in load_run(config.run_dir).sessions if s.arm == "C1")
     assert sum(c1.intervention_reasons.values()) >= 1 and "BELOW_FLOOR" in c1.intervention_reasons
+
+
+# ── LLM 오류로 끝난 대상 (API 한도 초과 등) ───────────────
+
+def run_until_quota(tmp_path, registry):
+    """p1은 끝까지 돌고, p5는 2턴 뒤 Target 호출이 막힌다 (10/06 실행에서 API 한도가 떨어진 상황)."""
+    from core.llm_client import LLMError
+
+    client = RoleClient(SCRIPT + SCRIPT, fail_on={("target", 6): LLMError("HTTP 402 insufficient_credits")})
+    return execute(tmp_path, registry, ["p1", "p5"], client=client)
+
+
+def test_target_that_ended_with_llm_error_is_not_complete(tmp_path, registry):
+    config, results, _, _ = run_until_quota(tmp_path, registry)
+    assert [(r.target_id, r.arm.label, len(r.turns), r.stop_reason.value) for r in results] == [
+        ("p1", "C0", 3, "MAX_TURNS"), ("p1", "C1", 3, "MAX_TURNS"),
+        ("p5", "C0", 2, "LLM_ERROR")]                       # 오류가 나면 남은 갈래·대상은 돌리지 않고 멈춘다
+    assert completed_targets(config.run_dir / TRACE_FILE_NAME, ["C0", "C1"]) == {"p1"}
+
+
+def test_resume_reruns_the_target_cut_short_by_llm_error(tmp_path, registry):
+    config, _, _, _ = run_until_quota(tmp_path, registry)
+    client = RoleClient(SCRIPT)
+    _, results, _, _ = execute(tmp_path, registry, ["p1", "p5"], client=client, resume=True)
+    assert [(r.target_id, len(r.turns), r.stop_reason.value) for r in results] == [("p5", 3, "MAX_TURNS")] * 2
+    report = load_run(config.run_dir)
+    assert all(s.stop_reason == "MAX_TURNS" and s.turns == 3 for s in report.sessions)
+    assert "LLM 호출 오류" not in render(report)
+
+
+def test_report_leaves_out_targets_cut_short_by_llm_error(tmp_path, registry):
+    config, _, _, _ = run_until_quota(tmp_path, registry)
+    text = render(load_run(config.run_dir))
+    assert "LLM 호출 오류로 중간에 끝난 세션이 1개" in text and "p5/C0(2턴)" in text
+    summary = text.split("## 갈래별 요약")[1].split("## 세션별")[0]
+    assert "| C0 | 1 | 3 |" in summary and "| C1 | 1 | 3 |" in summary      # p5의 2턴짜리 세션은 세지 않는다

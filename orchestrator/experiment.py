@@ -45,7 +45,7 @@ from ontology.normalizer import OntologyNormalizer
 from orchestrator.release_gate import Arm, Condition, GateConfig, ObservationNormalizer, ReleaseGate
 from orchestrator.rewriter import ResponseRewriter, RewriterConfig
 from orchestrator.run_log import RunLogger
-from orchestrator.session import SessionParts, SessionResult, SessionRunner, TurnRecord
+from orchestrator.session import SessionParts, SessionResult, SessionRunner, StopReason, TurnRecord
 from qi_extractor.extractor import ExtractorConfig, QIExtractor
 from target_llm.responder import TargetConfig, TargetResponder
 from target_llm.retriever import Retriever
@@ -78,6 +78,10 @@ class ExperimentConfig:
                          나머지 갈래의 공격자는 자기 갈래의 응답에 반응하지 않으므로 적응형 공격의 결과는 아니다
     resume             → True면 같은 experiment_id의 이전 기록에서 모든 갈래가 끝난 대상은 건너뛴다.
                          중간에 멈춘 대상은 첫 갈래부터 다시 돌린다 (집계는 대상·갈래마다 마지막으로 끝난 세션만 쓴다)
+    stop_on_violation  → True면 실행 중 k가 1 <= k < k_req가 된 턴에서 세션을 끝낸다 (그 뒤 턴의 LLM 호출을 아낀다).
+                         paired_questions에서는 질문을 만드는 첫 갈래에만 적용하고, 나머지 갈래는 그 질문들을 끝까지 받는다
+    stop_run_on_llm_error → 세션이 LLM 호출 오류로 끝나면 남은 갈래·대상을 돌리지 않고 실행을 멈출지 (기본 True).
+                         원인을 해결한 뒤 --resume으로 이어 돌린다
     fuzzer             → 질문 생성 설정 (자료 범위 안내, 변형 결과 검사, QI 고른 배분). None이면 기본값
     target / extractor / rewriter → 각 LLM 호출의 prompt 버전·temperature
     output_root        → 결과를 둘 상위 폴더 (기본 <프로젝트>/runs)
@@ -94,6 +98,8 @@ class ExperimentConfig:
     restrict_seeds_to_counted_qis: bool = True
     paired_questions: bool = False
     resume: bool = False
+    stop_on_violation: bool = False
+    stop_run_on_llm_error: bool = True
     fuzzer: FuzzerConfig | None = None
     target: TargetConfig = TargetConfig()
     extractor: ExtractorConfig = ExtractorConfig()
@@ -252,11 +258,15 @@ def run_experiment(
                 if on_turn is not None:
                     on_turn(target_id, arm, record)
 
-            result = runner.run(target_id, max_turns=max_turns, on_turn=handle)
+            result = runner.run(target_id, max_turns=max_turns, on_turn=handle,
+                                stop_on_violation=config.stop_on_violation and not paired)
             logger.log_session_end(result, extra=extra)
             results.append(result)
             if lead is None:
                 lead = result
+            if result.stop_reason is StopReason.LLM_ERROR and config.stop_run_on_llm_error:
+                # API 한도 초과·연결 실패는 다음 대상에서도 그대로 실패한다. 0턴짜리 세션을 줄줄이 남기지 않고 멈춘다
+                return results
     return results
 
 
@@ -264,12 +274,15 @@ def completed_targets(trace_path: Path, arm_labels: Sequence[str]) -> set[str]:
     """
     input : trace_path (이전 실행의 trace.jsonl. 없어도 된다), arm_labels (이번에 돌릴 갈래)
     output : 그 갈래들이 모두 끝까지 기록된(session_end가 있는) 대상 ID
+
+    LLM 오류로 끝난 세션(API 한도 초과, 연결 실패 등)은 끝난 것으로 치지 않는다. 그 대상은 다시 돌린다.
     """
     if not Path(trace_path).exists():
         return set()
     finished: dict[str, set[str]] = {}
     for session in iter_sessions(trace_path):
-        if session.finished and session.head.get("session_key") is None:
+        if session.finished and session.head.get("session_key") is None \
+                and session.end.get("stop_reason") != StopReason.LLM_ERROR.value:
             finished.setdefault(session.head["target_id"], set()).add(arm_of(session.head))
     return {target_id for target_id, arms in finished.items() if set(arm_labels) <= arms}
 
@@ -340,6 +353,7 @@ def describe_run(config: ExperimentConfig, population: ReferencePopulation, retr
             "max_stale_turns": config.max_stale_turns,
             "restrict_seeds_to_counted_qis": config.restrict_seeds_to_counted_qis,
             "paired_questions": config.paired_questions,
+            "stop_on_violation": config.stop_on_violation,
             "shared_raw_responses": config.paired_questions,
             **fuzzer_config_of(config).describes,
             "system_prompt_file": str(FUZZER_SYSTEM_PROMPT_FILE.relative_to(PROJECT_ROOT)),

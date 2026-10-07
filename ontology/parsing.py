@@ -110,7 +110,7 @@ class Parser:
             found.update(nodes_of_text)
         parsed = self._finish("AGE", found, "RULE_MATCH")
         if parsed.reason != "AMBIGUOUS":
-            return parsed
+            return self._cap_by_explicit_range(parsed, texts)
         # 표현들이 서로 다른 구간을 가리킬 때 ("30대 초중반(28-35세)" + "early 30s"):
         # 뒤에 온 표현(추출기의 표준 표기)이 한 구간으로 읽히면 그 구간이 속한 10년 구간까지만 인정한다.
         # 5년 구간으로 좁히지 않는 것은 원문이 그보다 넓은 범위를 말했기 때문이다.
@@ -125,6 +125,31 @@ class Parser:
                     node_id = parent
                 if self._ontology.node(node_id).level == "10y":
                     return Parsed((node_id,), "RULE_MATCH")
+        return parsed
+
+    def _cap_by_explicit_range(self, parsed: Parsed, texts: list[str]) -> Parsed:
+        """
+        표현에 숫자 범위가 함께 적혀 있으면 그 범위보다 좁게 읽지 않는다.
+        "30대 초중반(대략 30-35세)"은 '초반'만 보면 30~34세 구간이지만 적힌 범위는 35세까지다 → 30대까지만 인정한다.
+        (10/07 실행: 35세인 대상이 30~34세 구간으로 들어가 틀린 값이 됐다)
+        """
+        if parsed.node_id is None:
+            return parsed
+        ranges: set[str] = set()
+        for text in texts:
+            for match in _RANGE.finditer(text.lower()):
+                low, high = sorted((int(match.group(1)), int(match.group(2))))
+                if not (_in_range(low) and _in_range(high)) or low == high:
+                    continue
+                if low // 5 == high // 5:
+                    ranges.add(age_5y_id(low))
+                elif low // 10 == high // 10:
+                    ranges.add(age_10y_id(low))
+        ranges = {node for node in ranges if node in self._ontology}
+        if len(ranges) == 1:
+            (limit,) = ranges
+            if parsed.node_id != limit and self._ontology.is_same_or_descendant(parsed.node_id, limit):
+                return Parsed((limit,), parsed.reason)
         return parsed
 
     # ── LOC · POB ────────────────────────────────────────
@@ -362,6 +387,12 @@ def _age_nodes(text: str) -> set[str]:
 #   읽지 않는 것        : "학위 없음", "some college", 대학·고교 중퇴, 고등학교 재학 (맞는 node가 없다)
 # ──────────────────────────────────────────────────────────────
 
+# "~ 이상" 표현: 그 학력이거나 더 높다는 뜻이라 한 단계로 정할 수 없다
+_EDU_AT_LEAST_HS = re.compile(
+    r"(?:고등학교|고졸|high\s*school)[^.;]{0,14}?(?:이상|or (?:higher|above|more))|at least (?:a )?high\s*school")
+_EDU_AT_LEAST_COLLEGE = re.compile(
+    r"(?:대학교?|대졸|학사|석사|college|university|bachelor(?:'s)?(?: degree)?|master(?:'s)?(?: degree)?)[^.;]{0,10}?"
+    r"(?:이상|or (?:higher|above|more))|at least (?:a )?(?:bachelor|college|university|master)")
 _EDU_NO_NODE = re.compile(
     r"no (?:college )?degree|without a degree|학위\s*(?:가|는)?\s*없|some college|college dropout|dropped out"
     r"|high\s*school dropout|did(?:n't| not) (?:finish|complete|graduate)|중퇴|no high\s*school")
@@ -382,8 +413,10 @@ _EDU_TERTIARY = re.compile(r"tertiary|higher education|대학\s*이상|고등\s*
 
 
 def _edu(text: str) -> list[str]:
-    if _EDU_NO_NODE.search(text):
-        return []
+    if _EDU_NO_NODE.search(text) or _EDU_AT_LEAST_HS.search(text):
+        return []                          # "고등학교 졸업 이상": 고졸인지 그보다 높은지 정할 수 없다
+    if _EDU_AT_LEAST_COLLEGE.search(text):
+        return ["EDU:TERTIARY"]            # "대학 이상": 학사인지 석·박사인지 정할 수 없어 묶음 단계까지만
     # 학위 수준을 정할 수 없는 표현은 먼저 떼어 둔다 ("Doctorate in Medicine"의 doctorate를 박사로 읽지 않기 위해)
     unspecified = bool(_EDU_MEDICAL.search(text) or _EDU_ASSOCIATE.search(text))
     text = _EDU_ASSOCIATE.sub(" ", _EDU_MEDICAL.sub(" ", text))
@@ -424,6 +457,7 @@ def _edu(text: str) -> list[str]:
 _INC_NO_NODE = re.compile(
     r"not (?:very |so |that |particularly )?(?:high|low)|(?:높|낮)지\s*않|(?:below|above)[-\s]average"
     r"|평균\s*(?:이하|이상|보다)")
+_INC_SPAN = re.compile(r"평균\s*이하\s*[~\-–—]|하단\s*[~\-–—]|(?:low|lower)[-\s]*(?:to|[~\-–—])[-\s]*(?:middle|mid)|중하\s*[~\-–—]")
 _INC_VERY_HIGH = re.compile(r"very[\s_-]*high|매우\s*높|아주\s*높|최상위|초고소득")
 _INC_RULES = (
     ("INC:HIGH", re.compile(r"\bhigh\b|고소득|높")),
@@ -434,6 +468,8 @@ _INC_RULES = (
 
 def _inc(text: str) -> list[str]:
     """ "very high"가 있으면 그 안의 "high"는 따로 세지 않는다. 급여 금액만 있는 값은 해석하지 않는다 (D1)."""
+    if _INC_SPAN.search(text):
+        return []                          # "평균 이하~평균 수준"처럼 두 등급에 걸친 표현은 정하지 않는다
     text = _INC_NO_NODE.sub(" ", text)
     if _INC_VERY_HIGH.search(text):
         return ["INC:VERY_HIGH"]

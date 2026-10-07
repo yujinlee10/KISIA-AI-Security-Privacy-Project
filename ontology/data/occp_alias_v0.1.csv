@@ -205,3 +205,14 @@ cook,5120,M,
 police officer,5412,H,
 driver,83,M,차종을 알 수 없음
 sales manager,1221,H,
+retail store owner,5221,H,
+retail business owner,5221,H,
+retail clothing store owner,5221,H,
+store owner,5221,H,
+shopkeeper,5221,H,
+bookstore clerk,5223,H,
+store clerk,5223,H,
+sales clerk,5223,H,
+shop assistant,5223,H,
+physical education teacher,23,M,학교급을 알 수 없음
+gym teacher,23,M,학교급을 알 수 없음

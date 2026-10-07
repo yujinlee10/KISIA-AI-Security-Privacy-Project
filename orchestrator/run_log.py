@@ -142,7 +142,8 @@ class RunLogger:
                         전략 이름은 trace의 attack.strategy에 남긴다.
           k_val       : 정답(GT) 대조 후 계산하는 값이라 실행 중에는 만들지 않는다 (D1: Runtime에 GT 사용 금지).
                         실행이 끝난 뒤 'python -m validation <실행 폴더>'가 k_val을 채운 사본을 만든다.
-          utility_score : 유용성 채점 기준이 정해진 뒤 채운다.
+          (utility_score에는 원 응답과 공개 응답의 글자 3-gram 유사도를 넣는다. 뜻의 보존을 재는 값은 아니다
+           — orchestrator/utility.py)
         """
         attack, commit, release = record.attack, record.commit, record.release
         defender = NO_DEFENDER_NAME
@@ -169,6 +170,7 @@ class RunLogger:
             generalized=release.generalized,
             suppressed=release.suppressed,
             k_floor=release.k_floor,
+            utility_score=record.utility.similarity,
             state_id=record.state_id_after,
             transition_id=f"{record.state_id_before}>{record.state_id_after}",
             model=self._model,
