@@ -92,43 +92,25 @@ def _matches_all_qis(persona_qis: dict[str, Any], query_qis: dict[str, Any]) -> 
 
 
 def _matches_qi(qi_type: str, actual: Any, expected: Any) -> bool:
+    """expected 노드가 actual 노드와 동일하거나 actual의 조상 노드이면 True."""
     if actual is None or expected is None:
         return False
 
     actual_text = str(actual).strip()
     expected_text = str(expected).strip()
-    if actual_text.casefold() == expected_text.casefold():
+    if actual_text == expected_text:
         return True
 
-    if qi_type == "LOC":
-        return expected_text.casefold() in _location_ancestors(actual_text)
+    # 노드 계층을 따라 expected가 actual의 조상인지 확인
+    from .loader import NODE_REGISTRY  # noqa: PLC0415
+    return _is_ancestor_or_equal(expected_text, actual_text, NODE_REGISTRY)
 
-    if qi_type == "AGE":
-        if expected_text == "adult":
-            return actual_text in {"20s", "30s", "40s", "50s", "60s"}
-        if expected_text == "senior":
-            return actual_text in {"70s", "80s", "90s"}
-        if expected_text == "young":
-            return actual_text == "teens"
 
-    if qi_type == "EDU":
-        if expected_text == "higher_education":
-            return actual_text in {"College Degree", "Master's", "PhD"}
-        if expected_text == "non_advanced_degree":
-            return actual_text in {"HS Diploma", "In College/HS Diploma"}
-
-    if qi_type == "REL":
-        if expected_text == "partnered":
-            return actual_text in {"married", "engaged", "in a relationship"}
-        if expected_text == "not_partnered":
-            return actual_text in {"single", "divorced", "widowed"}
-
+def _is_ancestor_or_equal(query: str, patient: str, registry: dict[str, Any]) -> bool:
+    """query가 patient 노드의 조상(혹은 동일)이면 True."""
+    current = registry.get(patient, {}).get("parent_id")
+    while current:
+        if current == query:
+            return True
+        current = registry.get(current, {}).get("parent_id")
     return False
-
-
-def _location_ancestors(value: str) -> set[str]:
-    ancestors: set[str] = set()
-    parts = [part.strip() for part in value.split(",") if part.strip()]
-    if len(parts) >= 2:
-        ancestors.add(parts[-1].casefold())
-    return ancestors

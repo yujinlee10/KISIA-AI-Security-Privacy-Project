@@ -9,13 +9,16 @@ from typing import Any, Literal
 
 DEFAULT_QI_ORDER = [
     "AGE",
-    "LOC",
-    "OCCP",
-    "EDU",
-    "REL",
+    "SEX",
+    "REGION",
+    "DX",
+    "PROC",
+    "PERIOD",
+    "MED",
+    "PLAN",
 ]
 
-DIRECT_IDENTIFIER_FIELDS = {"author", "username", "person_id"}
+DIRECT_IDENTIFIER_FIELDS = {"patient_id"}
 QIStatus = Literal["committed", "pending", "conflict", "rejected"]
 
 @dataclass(frozen=True)
@@ -125,70 +128,23 @@ def update_state(
 def normalize_qi_value(qi_type: str, value: Any) -> Any:
     if value is None:
         return None
-
-    if qi_type == "AGE":
-        return to_age_band(value)
-
     if isinstance(value, str):
-        normalized = " ".join(value.strip().split())
+        normalized = value.strip()
         return normalized if normalized else None
-
     return value
 
 
-def to_age_band(value: Any) -> str | None:
-    if value is None:
-        return None
-
-    if isinstance(value, str):
-        raw = value.strip().lower()
-        if not raw:
-            return None
-        if raw.endswith("s") and raw[:-1].isdigit():
-            return raw
-        if raw in {"teens", "young", "adult", "senior"}:
-            return raw
-        digits = "".join(ch for ch in raw if ch.isdigit())
-        if not digits:
-            return raw
-        value = int(digits)
-
-    if not isinstance(value, int):
-        return str(value)
-
-    if value < 20:
-        return "teens"
-    decade = value // 10 * 10
-    return f"{decade}s"
-
-
 def is_more_specific(qi_type: str, candidate: Any, existing: Any) -> bool:
+    """노드 계층 depth 기준으로 candidate가 existing보다 더 구체적인지 확인."""
     if candidate in (None, "") or existing in (None, ""):
         return False
-
-    if qi_type == "LOC":
-        return _location_specificity(str(candidate)) > _location_specificity(str(existing))
-
-    if qi_type == "AGE":
-        return _age_specificity(candidate) > _age_specificity(existing)
-
-    if qi_type == "EDU":
-        return _education_specificity(str(candidate)) > _education_specificity(str(existing))
-
-    return False
-
-
-def _location_specificity(value: str) -> int:
-    return len([part for part in value.split(",") if part.strip()])
-
-
-def _age_specificity(value: Any) -> int:
-    text = str(value)
-    return 2 if text.isdigit() else 1
-
-
-def _education_specificity(value: str) -> int:
-    lowered = value.lower()
-    if any(token in lowered for token in ["computer", "business", "marketing", "physics"]):
-        return 2
-    return 1
+    if str(candidate) == str(existing):
+        return False
+    # 순환 임포트 방지를 위해 함수 내부에서 임포트
+    try:
+        from .loader import NODE_REGISTRY  # noqa: PLC0415
+    except ImportError:
+        return False
+    c_depth = NODE_REGISTRY.get(str(candidate), {}).get("depth", -1)
+    e_depth = NODE_REGISTRY.get(str(existing), {}).get("depth", -1)
+    return c_depth > e_depth

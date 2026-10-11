@@ -1,6 +1,8 @@
 turn,target_id,candidate_qi,k_before,k_after_raw,risk_gain_raw,risky,defense_action,generalized_qis,suppressed_qis,k_after_defense,risk_after_defense,state_after_defense
-1,pers1,"LOC=Zurich, Switzerland",300000,2054,0.000484,False,allow,[],[],2054,0.000487,"{'LOC': 'Zurich, Switzerland'}"
-2,pers1,OCCP=software engineer,2054,36,0.027291,False,allow,[],[],36,0.027778,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer'}"
-3,pers1,AGE=30s,36,9,0.083333,False,allow,[],[],9,0.111111,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s'}"
-4,pers1,EDU=Master's,9,3,0.222222,True,suppress,[],"[""EDU=Master's""]",9,0.111111,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s'}"
-5,pers1,REL=single,9,1,0.888889,True,suppress,[],['REL=single'],9,0.111111,"{'LOC': 'Zurich, Switzerland', 'OCCP': 'software engineer', 'AGE': '30s'}"
+1,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,AGE=AGE_Y0,576,64,0.013889,False,allow,[],[],64,0.015625,{'AGE': 'AGE_Y0'}
+2,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,SEX=SEX_MALE,64,31,0.016633,False,allow,[],[],31,0.032258,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE'}"
+3,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,REGION=REGION_DATASET_LOCALITY_DE64EE41969E163E,31,1,0.967742,True,suppress,[],['REGION=REGION_DATASET_LOCALITY_DE64EE41969E163E'],31,0.032258,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE'}"
+4,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,DX=DX_ICD_CODE_R569,31,2,0.467742,True,suppress,[],['DX=DX_ICD_CODE_R569'],31,0.032258,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE'}"
+5,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,PROC=PROC_SCT_1260009003,31,25,0.007742,False,allow,[],[],25,0.04,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE', 'PROC': 'PROC_SCT_1260009003'}"
+6,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,PERIOD=PERIOD_CONDITION_START_DATE_DAY_1963-12-20,25,1,0.96,True,suppress,[],['PERIOD=PERIOD_CONDITION_START_DATE_DAY_1963-12-20'],25,0.04,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE', 'PROC': 'PROC_SCT_1260009003'}"
+7,ae3336a0-1686-b8a7-bc13-ccc2967a3f73,MED=MED_RX_308971,25,2,0.46,True,suppress,[],['MED=MED_RX_308971'],25,0.04,"{'AGE': 'AGE_Y0', 'SEX': 'SEX_MALE', 'PROC': 'PROC_SCT_1260009003'}"

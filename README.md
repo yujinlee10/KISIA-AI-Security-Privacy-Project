@@ -1,51 +1,56 @@
 # Privacy Risk / Defender Module
 
-이 모듈은 이유진 담당 범위인 Privacy State, 후보군 크기 `k`, 재식별 위험도, projected risk, Defender 일반화/억제 동작을 구현한 코드
+이 모듈은 이유진 담당 범위인 Privacy State, 후보군 크기 `k`, 재식별 위험도, projected risk, Defender 일반화/억제 동작을 구현한 코드.
 
 ## QI Set
 
-SynthPAI profile에서 다음 5개 QI를 사용한다. 명칭은 fuzzer 코드와 통일된 영어 대문자 약어를 사용한다.
+Synthea 합성 환자 기반 의료 시나리오에서 다음 8개 QI를 사용한다. 명칭은 fuzzer 코드와 통일된 영어 대문자 약어를 사용한다.
 
 | 약어 | 의미 | 출처 |
 |------|------|------|
-| `AGE` | 나이 (decade band) | `profile.age` → `20s`, `30s` 등으로 변환 |
-| `LOC` | 거주지 | `profile.city_country` |
-| `OCCP` | 직업 | `profile.occupation` |
-| `EDU` | 학력 | `profile.education_categorized` 우선, 없으면 `profile.education`에서 파생 |
-| `REL` | 관계 상태 | `profile.relationship_status` |
+| `AGE` | 나이 | `age_node` (사건연결표) |
+| `SEX` | 성별 | `sex_node` (사건연결표) |
+| `REGION` | 거주/진료 지역 | `region_node` (사건연결표) |
+| `DX` | 진단명 (SNOMED CT) | `code_node` (event_type=CONDITION) |
+| `PROC` | 시술/처치 (SNOMED CT) | `code_node` (event_type=PROCEDURE) |
+| `PERIOD` | 진료 시기 | `period_start_node` (event_type=CONDITION) |
+| `MED` | 투약 정보 | `code_node` (event_type=MEDICATION) |
+| `PLAN` | 케어플랜 | `code_node` (event_type=CAREPLAN) |
 
-`author`는 내부 식별자인 `person_id`로만 사용한다. `username`은 직접식별자로 보고 QI 계산에는 사용하지 않는다.
+QI 값은 노드 ID 형태로 관리된다. 예: `AGE_Y22`, `SEX_MALE`, `REGION_DATASET_LOCALITY_...`, `DX_SCT_65363002`.
+
+## 데이터 파일
+
+두 파일이 `risk_defender/data/`에 포함되어 있다. 별도 설정 없이 바로 실행 가능하다.
+
+| 파일 | 설명 |
+|------|------|
+| `risk_defender/data/노드_v0.9.csv` | 69,034개 노드와 계층 구조 (node_id, parent_id, depth, canonical_label) |
+| `risk_defender/data/사건연결표_v0.9.csv` | 576명 환자의 51,759개 의료 이벤트 |
 
 ## 핵심 인터페이스
 
 ```python
-from risk_defender.loader import load_population, load_expanded_population
+from risk_defender.loader import load_population
 from risk_defender.schema import PrivacyState, QIObservation
 from risk_defender.risk import evaluate_projected_risk
 from risk_defender.defender import defend_candidate_qis
 
-# 원본 300개
-population = load_population("risk_defender/data/user_bot_profiles_300.json")
+population = load_population()  # 기본값: risk_defender/data/ 내 CSV 사용
 
-# 원본 + 합성 300,000개
-population = load_expanded_population(
-    "risk_defender/data/user_bot_profiles_300.json",
-    synth_path="risk_defender/data/user_bot_profiles_300000.json",
-)
-
-state = PrivacyState(target_id="pers4", session_id="s1")
+state = PrivacyState(target_id="<patient-uuid>", session_id="s1")
 
 projected = evaluate_projected_risk(
     population,
     state,
-    [QIObservation("LOC", "Zurich, Switzerland")],
+    [QIObservation("REGION", "REGION_DATASET_STATE_MASSACHUSETTS")],
     threshold=5,
 )
 
 decision = defend_candidate_qis(
     population,
     state,
-    [QIObservation("LOC", "Zurich, Switzerland")],
+    [QIObservation("REGION", "REGION_DATASET_LOCALITY_E0E1225FF2456D89")],
     generalize_threshold=5,
     suppress_threshold=3,
 )
@@ -74,175 +79,60 @@ RiskGain_t = Risk_after - Risk_before
 
 k ≤ suppress_threshold이면 어떤 일반화도 시도하지 않고 즉시 해당 QI를 제거한다. k가 위험 구간(3 < k ≤ 5)일 때만 일반화를 거친다.
 
-QI별 일반화 규칙:
+## QI별 일반화 규칙
+
+일반화는 노드 계층(노드_v0.9.csv)을 따라 parent_id 방향으로 올라간다.
 
 | QI | 일반화 예시 |
 |----|------------|
-| `LOC` | `Zurich, Switzerland` → `Switzerland` |
-| `AGE` | `20s` / `30s` → `adult` / `70s` → `senior` |
-| `EDU` | `Master's` / `PhD` → `higher_education` |
-| `REL` | `married` / `engaged` → `partnered` / `single` → `not_partnered` |
-
-## 데이터셋 다운로드 방식
-
-기본 실행에서는 SynthPAI GitHub raw URL에서 `user_bot_profiles_300.json`을 자동으로 다운로드한다.
-
-```text
-https://raw.githubusercontent.com/eth-sri/SynthPAI/main/data/profiles/user_bot_profiles_300.json
-```
-
-다운로드된 파일은 아래 경로에 저장된다.
-
-```text
-risk_defender/data/user_bot_profiles_300.json
-```
-
-이미 파일이 있으면 다시 다운로드하지 않고 기존 파일을 재사용한다. 새로 받고 싶으면 `--refresh-data` 옵션을 사용한다.
+| `AGE` | `AGE_Y22` → `AGE5_20` (20~24세) → `AGE10_20` (20대) → `ANY_AGE` |
+| `SEX` | `SEX_MALE` / `SEX_FEMALE` → `ANY_SEX` |
+| `REGION` | `REGION_DATASET_LOCALITY_*` (도시) → `REGION_DATASET_STATE_*` (주) → `ANY_REGION` |
+| `DX` | `DX_SCT_65363002` → 상위 개념 → `ANY_DX` |
+| `PROC` | `PROC_SCT_*` → 상위 개념 → `ANY_PROC` |
+| `PERIOD` | `PERIOD_*_DAY_*` (일) → `PERIOD_*_MONTH_*` (월) → `PERIOD_*_YEAR_*` (연) → `ANY_DATE` |
+| `MED` | `MED_RX_*` → 상위 분류 → `ANY_MED` |
+| `PLAN` | `PLAN_SCT_*` → 상위 분류 → `ANY_PLAN` |
 
 ## 실행 예시
 
-VS Code에서 `risk_defender` 폴더 자체를 열어둔 상태라면 터미널에서 다음처럼 실행한다.
-
 ```bash
+# 프로젝트 루트에서
+python3 -m risk_defender.demo --generalize-threshold 5 --suppress-threshold 3
+
+# risk_defender 폴더 안에서
 python3 demo.py --generalize-threshold 5 --suppress-threshold 3
-```
 
-`risk_defender`의 부모 폴더에서 실행한다면 다음 명령도 사용할 수 있다.
+# 특정 환자 지정 (UUID 또는 1-based 인덱스)
+python3 -m risk_defender.demo --target-id ae3336a0-1686-b8a7-bc13-ccc2967a3f73
+python3 -m risk_defender.demo --target-id 2
 
-```bash
-python3 -m risk_defender.demo --generalize-threshold 5 --suppress-threshold 3
-```
-
-실행 결과는 `outputs/demo_single_target.csv`에 저장된다. CSV에는 각 turn마다 원본 QI를 그대로 넣었을 때의 `k_after_raw`, Defender 적용 후의 `k_after_defense`, 일반화 또는 억제 결과가 기록된다.
-
-로컬에 이미 받은 SynthPAI 파일을 직접 지정하고 싶으면 다음처럼 실행한다.
-
-```bash
+# 데이터 경로 직접 지정
 python3 -m risk_defender.demo \
-  --data /path/to/user_bot_profiles_300.json \
-  --generalize-threshold 5 --suppress-threshold 3
+  --profiles /path/to/user_patient_profiles_576.json \
+  --node-data /path/to/노드_v0.9.csv
 ```
 
-## 확장 Population (300,000개)
-
-원본 300개만으로는 QI 1개만 입력해도 k가 너무 작아 Defender가 과도하게 발동한다. 합성 데이터를 생성해 300,000개로 확장하면 실제 사용 시나리오에 가까운 k 분포를 얻을 수 있다.
-
-**합성 데이터 생성 (최초 1회)**
-
-```bash
-# 프로젝트 루트에서 실행
-python3 scripts/generate_synth_population.py
-```
-
-생성된 파일은 `risk_defender/data/user_bot_profiles_300000.json` (약 70 MB)에 저장된다. seed=42 고정으로 재현 가능하다.
-
-**확장 Population으로 데모 실행**
-
-```bash
-# 기본값: 원본 300개
-python3 -m risk_defender.demo --generalize-threshold 5 --suppress-threshold 3
-
-# 300,000개 사용 시 --expanded 필요
-python3 -m risk_defender.demo --expanded --generalize-threshold 5 --suppress-threshold 3
-```
-
-**생성 옵션**
-
-```bash
-python3 scripts/generate_synth_population.py --n 300000 --seed 42
-```
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `--n` | 300000 | 최종 총 프로필 수 (원본 300개 포함) |
-| `--seed` | 42 | 랜덤 시드 (재현 가능성 보장) |
-| `--output` | `data/user_bot_profiles_300000.json` | 출력 경로 |
-| `--source` | `data/user_bot_profiles_300.json` | 원본 경로 |
+실행 결과는 `outputs/demo_single_target.csv`에 저장된다. 각 turn마다 원본 QI를 그대로 넣었을 때의 `k_after_raw`, Defender 적용 후의 `k_after_defense`, 일반화 또는 억제 결과가 기록된다.
 
 ## Demo 동작 방식
 
-현재 `demo.py`는 QI를 랜덤으로 선택하지 않는다. 재현 가능한 검증을 위해 기본 target과 QI 입력 순서를 고정해서 실행한다.
-
-`--target-id`를 지정하지 않으면 SynthPAI population에서 첫 번째 persona인 `pers1`을 기본 target으로 사용한다. 이후 해당 target profile에서 5개 QI를 가져와 아래 순서대로 하나씩 Privacy State에 넣어본다.
+`demo.py`는 재현 가능한 검증을 위해 QI 입력 순서를 고정해서 실행한다.
 
 ```python
-DEMO_QI_ORDER = ["LOC", "OCCP", "AGE", "EDU", "REL"]
+DEMO_QI_ORDER = ["AGE", "SEX", "REGION", "DX", "PROC", "PERIOD", "MED", "PLAN"]
 ```
 
-따라서 같은 데이터셋, 같은 target, 같은 threshold로 실행하면 CSV 결과도 동일하게 나온다. 다른 target에 대해 확인하고 싶으면 `--target-id`를 지정하면 된다.
-
-```bash
-python3 -m risk_defender.demo --expanded --target-id pers2 --generalize-threshold 5 --suppress-threshold 3
-```
-
-현재 demo는 랜덤 공격 시뮬레이션이 아니라, 하나의 target에 대해 QI가 순서대로 누적될 때 `k`, risk gain, Defender 동작을 확인하는 재현 가능한 데모이다.
-
-## Threshold 선정 근거
-
-300,000개 population 기준으로 원본 300명 타겟 전체에 대해 threshold 후보 7개를 실험한 결과:
-
-| threshold | allow | generalize | suppress | median k | min k | 평균 허용 QI 수 |
-|-----------|-------|------------|----------|----------|-------|----------------|
-| 3 | 66.9% | 18.2% | 14.9% | 5 | 4 | 4.26 |
-| 5 | 62.7% | 20.8% | 16.5% | 7 | 6 | 4.17 |
-| 10 | 56.0% | 23.4% | 20.6% | 14 | 11 | 3.97 |
-| 15 | 57.5% | 20.5% | 22.1% | 22 | 16 | 3.90 |
-| 20 | 57.7% | 20.1% | 22.1% | 30 | 21 | 3.89 |
-| 30 | 60.0% | 16.8% | 23.2% | 45 | 31 | 3.84 |
-| 50 | 57.9% | 16.0% | 26.1% | 80 | 51 | 3.69 |
-
-**선택: threshold = 3**
-
-- suppress율이 가장 낮아 정보 손실 최소 (14.9%)
-- 평균 4.26개 QI 허용 — 5개 중 거의 다 통과
-- min k = 4로 k-anonymity 기준 만족 (k > threshold 항상 보장)
-- threshold를 높일수록 suppress가 늘어 오히려 utility 감소
-
-실험 상세 결과: `risk_defender/outputs/poc_01_threshold_sensitivity_summary.csv`
-
-## 실험 결과 파일 (`outputs/`)
-
-팀원들이 직접 열어볼 수 있는 CSV 파일 4개가 있다.
-
-### `demo_single_target.csv`
-특정 target 1명에 대해 QI가 턴마다 하나씩 추가될 때 어떤 일이 벌어지는지 보여주는 파일이다. k 값이 어떻게 줄어드는지, Defender가 어느 시점에 일반화·억제를 하는지 한 눈에 볼 수 있다.
-
-```bash
-python3 -m risk_defender.demo --expanded --generalize-threshold 5 --suppress-threshold 3  # 기본 target
-python3 -m risk_defender.demo --expanded --target-id pers2 --generalize-threshold 5 --suppress-threshold 3  # 다른 target
-```
-
-### `poc_01_threshold_sensitivity_summary.csv`
-threshold 값을 여러 개 바꿔가며 실험한 **요약** 결과이다. threshold 후보 7개(`3, 5, 10, 15, 20, 30, 50`)에 대해 allow/generalize/suppress 비율과 최종 k 통계가 threshold 하나당 한 줄로 나온다. **threshold=3으로 결정한 근거 파일**이다.
-
-### `poc_01_threshold_sensitivity_detail.csv`
-위 summary의 원본 데이터이다. 모든 target × threshold × QI 조합에 대해 각 턴별 raw 로그가 들어 있다. summary 숫자가 이상하다 싶을 때 파고드는 용도이다.
-
-```bash
-python3 scripts/threshold_experiment.py --expanded  # 재생성 시
-```
-
-### `poc_02_cumulative_vs_stateless.csv`
-**C0(방어 없음) / C1(누적 State Defender) / Stateless(기억 없는 방어)** 세 조건을 20명 target에 대해 비교한 파일. 각 턴마다 세 조건의 k 값과 위험 사건 발생 여부가 기록돼 있다.
-
-이 파일이 보여주는 핵심: QI 하나하나는 개별로 봤을 때 안전해 보여도, 쌓이면 위험해지는데 Stateless는 이걸 못 잡습는다. 누적 State가 없으면 방어가 거의 의미 없다는 걸 수치로 증명한 파일이다.
-
-| 조건 | 위험 세션 (300k 기준) | 설명 |
-|------|----------------------|------|
-| C0 방어 없음 | 20/20 | 아무것도 안 막음 |
-| **C1 누적 Defender** | **0/20** | 우리 모듈, 완벽 방어 |
-| Stateless Defender | 20/20 | 기억 없는 방어 = 거의 효과 없음 |
-
-```bash
-python3 scripts/poc_defender.py --expanded  # 재생성 시
-```
+`--target-id`를 지정하지 않으면 population에서 첫 번째 환자를 기본 target으로 사용한다. 대상 환자에 특정 QI(예: PLAN)가 없으면 해당 turn은 건너뛴다.
 
 ## 지금까지 한 것
 
-- State / k / Defender 핵심 모듈 구현 완료. 
-- SynthPAI profile 300명(+ 합성 300,000명)을 reference population으로 로딩하고, 5개 QI가 누적될 때 후보군 k와 risk gain을 계산하며, threshold 이하로 떨어지는 QI는 일반화 또는 억제한다. 
-- 여러 target에 대한 batch 실험 및 threshold 비교완료 -> 일반화는 threshold5로, suppress는 threshold 3으로 결정
+- Privacy State / k / Defender 핵심 모듈 구현 완료
+- Synthea 합성 환자 576명을 reference population으로 로딩
+- 노드 계층(노드_v0.9.csv)을 활용한 계층적 QI 매칭 및 일반화 구현
+- 8개 의료 QI(AGE/SEX/REGION/DX/PROC/PERIOD/MED/PLAN)가 누적될 때 k와 risk gain 계산
+- threshold 이하 QI는 노드 계층을 따라 일반화하거나 억제
 
 ## 다음에 할 것
 
-- QI 몇 개 쓸지 정하기 (5-8개)
+- 다른 팀원 fuzzer 코드와 QI 입력 형식 연결

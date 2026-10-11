@@ -1,39 +1,63 @@
 {
-  "person_id": {
-    "source": "author",
+  "patient_id": {
+    "source": "patient_id",
     "use": "internal_id",
     "is_qi": false
   },
-  "username": {
-    "source": "username or profile.username",
-    "use": "direct_identifier",
-    "is_qi": false
-  },
   "AGE": {
-    "source": "profile.age",
-    "use": "derived_qi",
+    "source": "age_node (사건연결표)",
+    "use": "qi",
     "priority": 1,
-    "normalization": "integer age to decade band, e.g. 24 -> 20s"
+    "attribute": "AGE",
+    "generalization": "AGE_YX → AGE5_X (5세 구간) → AGE10_X (10세 구간) → ANY_AGE"
   },
-  "LOC": {
-    "source": "profile.city_country",
+  "SEX": {
+    "source": "sex_node (사건연결표)",
     "use": "qi",
     "priority": 2,
-    "generalization": "City, Country -> Country"
+    "attribute": "SEX",
+    "generalization": "SEX_MALE / SEX_FEMALE → ANY_SEX"
   },
-  "OCCP": {
-    "source": "profile.occupation",
+  "REGION": {
+    "source": "region_node (사건연결표)",
     "use": "qi",
-    "priority": 3
+    "priority": 3,
+    "attribute": "REGION",
+    "generalization": "REGION_DATASET_LOCALITY_* (도시) → REGION_DATASET_STATE_* (주) → ANY_REGION"
   },
-  "EDU": {
-    "source": "profile.education_categorized or profile.education",
-    "use": "derived_qi",
-    "priority": 4
-  },
-  "REL": {
-    "source": "profile.relationship_status",
+  "DX": {
+    "source": "code_node (event_type=CONDITION)",
     "use": "qi",
-    "priority": 5
+    "priority": 4,
+    "attribute": "DX",
+    "generalization": "SNOMED CT 진단 코드 → 상위 개념 노드 → ANY_DX"
+  },
+  "PROC": {
+    "source": "code_node (event_type=PROCEDURE)",
+    "use": "qi",
+    "priority": 5,
+    "attribute": "PROC",
+    "generalization": "SNOMED CT 처치 코드 → 상위 개념 노드 → ANY_PROC"
+  },
+  "PERIOD": {
+    "source": "period_start_node (event_type=CONDITION)",
+    "use": "qi",
+    "priority": 6,
+    "attribute": "PERIOD",
+    "generalization": "PERIOD_*_DAY_* (일) → PERIOD_*_MONTH_* (월) → PERIOD_*_YEAR_* (연) → ANY_DATE"
+  },
+  "MED": {
+    "source": "code_node (event_type=MEDICATION)",
+    "use": "qi",
+    "priority": 7,
+    "attribute": "MED",
+    "generalization": "약품 코드 → 상위 분류 노드 → ANY_MED"
+  },
+  "PLAN": {
+    "source": "code_node (event_type=CAREPLAN)",
+    "use": "qi",
+    "priority": 8,
+    "attribute": "PLAN",
+    "generalization": "케어플랜 코드 → 상위 분류 노드 → ANY_PLAN"
   }
 }
