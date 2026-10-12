@@ -19,7 +19,7 @@ NODE_REGISTRY: dict[str, dict[str, Any]] = {}
 _DATA_DIR = Path(__file__).resolve().parent / "data"
 DEFAULT_NODE_PATH = _DATA_DIR / "노드_v0.9.csv"
 DEFAULT_EVENT_PATH = _DATA_DIR / "사건연결표_v0.9.csv"
-DEFAULT_PROFILES_PATH = _DATA_DIR / "user_patient_profiles_576.json"
+DEFAULT_PROFILES_PATH = _DATA_DIR / "user_patient_profiles_1000.json"
 
 # event_type → QI 키 매핑 (CSV에서 직접 로드할 때 사용)
 _EVENT_TYPE_TO_QI: dict[str, str] = {

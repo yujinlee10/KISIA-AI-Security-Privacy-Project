@@ -21,39 +21,27 @@ QI 값은 노드 ID 형태로 관리된다. 예: `AGE_Y22`, `SEX_MALE`, `REGION_
 
 ## 데이터 파일
 
-두 파일이 `risk_defender/data/`에 포함되어 있다. 별도 설정 없이 바로 실행 가능하다.
+`risk_defender/data/`에 포함되어 있다. 별도 설정 없이 바로 실행 가능하다.
 
 | 파일 | 설명 |
 |------|------|
 | `risk_defender/data/노드_v0.9.csv` | 69,034개 노드와 계층 구조 (node_id, parent_id, depth, canonical_label) |
 | `risk_defender/data/사건연결표_v0.9.csv` | 576명 환자의 51,759개 의료 이벤트 |
+| `risk_defender/data/user_patient_profiles_576.json` | 원본 Synthea 576명 환자 프로필 |
+| `risk_defender/data/user_patient_profiles_1000.json` | 원본 576명 + 합성 424명, 총 1000명 프로필 **(기본값)** |
 
-## 핵심 인터페이스
+### Population 확장 (576 → 1000)
 
-```python
-from risk_defender.loader import load_population
-from risk_defender.schema import PrivacyState, QIObservation
-from risk_defender.risk import evaluate_projected_risk
-from risk_defender.defender import defend_candidate_qis
+원본 576개만으로는 REGION 하나만 물어봐도 k가 낮아 defender가 과도하게 발동하는 문제가 있었다. 이를 완화하기 위해 합성 데이터 424개를 추가해 총 1000명으로 확장했다.
 
-population = load_population()  # 기본값: risk_defender/data/ 내 CSV 사용
+**합성 방식**: `scripts/generate_synth_population.py`
+- `AGE`, `SEX`, `REGION`, `DX`, `PROC`, `MED`: 원본 576개의 빈도 비율로 가중치 샘플링 (분포 유지)
+- `PERIOD`: 원본 날짜 범위(1923-02-26 ~ 2026-08-13) 내 랜덤 생성 (원본이 거의 unique라 재샘플링 시 중복 문제 발생)
+- seed=42 고정으로 재현 가능
 
-state = PrivacyState(target_id="<patient-uuid>", session_id="s1")
-
-projected = evaluate_projected_risk(
-    population,
-    state,
-    [QIObservation("REGION", "REGION_DATASET_STATE_MASSACHUSETTS")],
-    threshold=5,
-)
-
-decision = defend_candidate_qis(
-    population,
-    state,
-    [QIObservation("REGION", "REGION_DATASET_LOCALITY_E0E1225FF2456D89")],
-    generalize_threshold=5,
-    suppress_threshold=3,
-)
+```bash
+# 재생성하려면
+python3 -m risk_defender.scripts.generate_synth_population --n 1000 --seed 42
 ```
 
 ## Risk 정의
@@ -109,7 +97,7 @@ python3 -m risk_defender.demo --target-id 2
 
 # 데이터 경로 직접 지정
 python3 -m risk_defender.demo \
-  --profiles /path/to/user_patient_profiles_576.json \
+  --profiles /path/to/user_patient_profiles_1000.json \
   --node-data /path/to/노드_v0.9.csv
 ```
 
@@ -132,7 +120,36 @@ DEMO_QI_ORDER = ["AGE", "SEX", "REGION", "DX", "PROC", "PERIOD", "MED", "PLAN"]
 - 노드 계층(노드_v0.9.csv)을 활용한 계층적 QI 매칭 및 일반화 구현
 - 8개 의료 QI(AGE/SEX/REGION/DX/PROC/PERIOD/MED/PLAN)가 누적될 때 k와 risk gain 계산
 - threshold 이하 QI는 노드 계층을 따라 일반화하거나 억제
+- 합성 데이터 424개 생성해 reference population을 576 → 1000명으로 확장
 
 ## 다음에 할 것
 
-- 다른 팀원 fuzzer 코드와 QI 입력 형식 연결
+
+
+## 핵심 인터페이스
+
+```python
+from risk_defender.loader import load_population
+from risk_defender.schema import PrivacyState, QIObservation
+from risk_defender.risk import evaluate_projected_risk
+from risk_defender.defender import defend_candidate_qis
+
+population = load_population()  # 기본값: risk_defender/data/ 내 CSV 사용
+
+state = PrivacyState(target_id="<patient-uuid>", session_id="s1")
+
+projected = evaluate_projected_risk(
+    population,
+    state,
+    [QIObservation("REGION", "REGION_DATASET_STATE_MASSACHUSETTS")],
+    threshold=5,
+)
+
+decision = defend_candidate_qis(
+    population,
+    state,
+    [QIObservation("REGION", "REGION_DATASET_LOCALITY_E0E1225FF2456D89")],
+    generalize_threshold=5,
+    suppress_threshold=3,
+)
+```
