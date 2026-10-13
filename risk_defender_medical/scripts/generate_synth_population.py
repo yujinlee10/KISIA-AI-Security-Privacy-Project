@@ -7,8 +7,8 @@
 - PERIOD: 원본 날짜 범위(1923-02-26 ~ 2026-08-13) 내 랜덤 생성
 
 사용법:
-    python3 -m risk_defender.scripts.generate_synth_population
-    python3 -m risk_defender.scripts.generate_synth_population --n 1000 --seed 42
+    python3 -m risk_defender_medical.scripts.generate_synth_population
+    python3 -m risk_defender_medical.scripts.generate_synth_population --n 1000 --seed 42
 """
 
 from __future__ import annotations

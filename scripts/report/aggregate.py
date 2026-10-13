@@ -39,9 +39,7 @@ def run(exp_id):
     cfg=load_config(d); log=load_log(d); tr=load_trace(d)
     bc=cfg.get('backend',{}); bn=bc.get('name') if isinstance(bc,dict) else str(bc)
     arms=cfg.get('arms',cfg.get('conditions',[]))
-    print(f'
-## {exp_id}  backend={bn}  arms={arms}
-')
+    print(f"\n## {exp_id}  backend={bn}  arms={arms}\n")
     sessions=[r for r in tr if r.get('type')=='session_end']
     print('| arm | turns | stop | k0 | kf | km | viol | unres | qi_cov | pair_cov | states | interesting |')
     print('|-----|-------|------|----|----|----|------|-------|--------|----------|--------|-------------|')
@@ -55,8 +53,7 @@ def run(exp_id):
         print(f"**{arm}** paths={t['paths']} MAPPED={t['mp']} PENDING={t['pd']} UNMAPPED={t['um']} gen={t['gen']} sup={t['sup']} ado={t['ado']}")
         print(f"  target: in={t['ti']:,} out={t['to']:,} | extractor: in={t['ei']:,} out={t['eo']:,} | latency={t['lat']:.0f}ms")
     seeds={r['seed_id'] for r in log}
-    print(f'
-seeds: {len(seeds)} — {sorted(seeds)}')
+    print(f"\nseeds: {len(seeds)} — {sorted(seeds)}")
 def main():
     ids=sys.argv[1:] if len(sys.argv)>1 else sorted(d.name for d in RUNS_DIR.iterdir() if d.is_dir())
     for i in ids: run(i)

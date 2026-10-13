@@ -2,5 +2,4 @@ __pycache__/
 *.py[cod]
 .DS_Store
 data/*.download
-data/user_bot_profiles_300.json
-data/user_bot_profiles_300000.json
+data/*.json

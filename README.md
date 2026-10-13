@@ -1,4 +1,4 @@
-# ZEROP_PII
+# AI 개인정보 재식별 위험 방어 프로젝트 (ZEROP_PII)
 
 멀티턴 대화에서 준식별정보(QI)가 쌓여 대상이 몇 명까지 좁혀지는지(k)를 턴마다 계산하고, 기준 아래로 내려가려는 응답을 공개 전에 일반화·억제하는 Privacy Framework의 POC 구현입니다.
 
@@ -9,7 +9,7 @@
 | 항목 | 상태 |
 | --- | --- |
 | 모듈 구현 및 연결 (질문 생성 → 응답 → 추출 → 판정 → 공개 → State 반영) | 완료 |
-| 단위·통합 테스트 | 768개 통과 (LLM 호출은 가짜 client 사용) |
+| 단위·통합 테스트 | 768개 통과, 3개 건너뜀 (LLM 호출은 가짜 client 사용) |
 | 실행 갈래 | C0(Defender 없음), C1(공개 전 Defender), C1S(무상태 Defender 대조군) |
 | 위험 계산 백엔드 | `risk_defender`(이유진 파트, 기본) / `ontology`(D1 Stage 3 계층 + D1 Stage 11 Defender) |
 | Privacy Coverage 기록 (D1 Stage 9) | 턴별 판정과 세션 요약을 trace에 기록 |
@@ -41,12 +41,13 @@
 | `validation/` | 양승준 | 실행이 끝난 뒤 State를 정답과 대조해 `k_val` 계산 (실행 중 코드에서 import 금지) |
 | `fuzzer/` | 한재이 | k 피드백 → 변형 전략 → Mutation 지시문 |
 | `risk_defender/` | 이유진 | Privacy State, k 계산, 일반화·억제 판정 |
+| `risk_defender_medical/` | 이유진 | Synthea 합성 환자를 이용한 의료 QI 재식별 위험·방어 확장본 |
 | `evaluation_v1/` | 이정민 | 실험 로그 스키마, 지표 계산 |
 | `data/seed_registry/` | 한재이 | O1 72개, O2 45개 Seed |
 | `scripts/` | 이유진 | 합성 기준 집단 생성, threshold 실험 |
 | `tests/` | — | 위 모듈 테스트 |
 
-팀원 모듈(`fuzzer/`, `risk_defender/`, `evaluation_v1/`)은 수정하지 않고 `adapters/`와 `orchestrator/`에서 불러 씁니다.
+통합 실행기는 팀원 모듈(`fuzzer/`, `risk_defender/`, `evaluation_v1/`)을 `adapters/`와 `orchestrator/`에서 불러 씁니다. 최종 통합 이후 진행된 의료 시나리오 확장 작업은 기존 통합 인터페이스를 덮어쓰지 않도록 `risk_defender_medical/`에 분리해 보존했습니다.
 
 ## 한 턴의 처리 순서
 
@@ -62,13 +63,24 @@
 
 원 응답과 정답(GT)은 공격 쪽 모듈과 State로 넘어가지 않습니다. k 값은 전략 선택에만 쓰이고 Mutation LLM 프롬프트에는 들어가지 않습니다.
 
+## 의료 시나리오 확장
+
+`risk_defender_medical/`은 Synthea 합성 환자 기준 집단을 사용해 `AGE`, `SEX`, `REGION`, `DX`, `PROC`, `PERIOD`, `MED`, `PLAN` 8개 QI의 누적 공개 위험을 계산합니다. 576명의 원본 합성 환자와 분포를 보존하며 확장한 1,000명 기준 집단을 함께 제공합니다.
+
+```bash
+python -m risk_defender_medical.demo --target-id 1 --out /tmp/medical_demo.csv
+python -m risk_defender_medical.scripts.generate_synth_population --n 1000 --seed 42
+```
+
+의료 확장본은 기존 SynthPAI 통합 실행기와 서로 다른 QI 계약을 사용하므로 독립 데모로 분리했습니다. 이로써 팀 통합본의 재현성과 후속 의료 실험을 모두 보존합니다.
+
 ## 설치
 
 Python 3.10 이상이 필요합니다.
 
 ```bash
-git clone https://github.com/ZEROPII/ZEROP_PII.git
-cd ZEROP_PII
+git clone https://github.com/yujinlee10/KISIA-AI-Security-Privacy-Project.git
+cd KISIA-AI-Security-Privacy-Project
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -105,7 +117,7 @@ python -m adapters.prepare_reference    # 기준 집단: 원본 300명 + 합성 
 
 ```bash
 python -m core.llm_client               # 모델 응답이 오는지 확인
-python -m pytest -q                     # 768 passed
+python -m pytest -q                     # 768 passed, 3 skipped
 python -m ontology                      # 기준 집단이 온톨로지로 전부 풀리는지 점검 (LLM 호출 없음)
 ```
 

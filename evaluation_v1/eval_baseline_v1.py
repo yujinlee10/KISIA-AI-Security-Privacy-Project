@@ -119,8 +119,7 @@ class BaselineEvaluator:
         }
 
     def extract_high_risk_paths(self) -> pd.DataFrame:
-        #고위험 경로 추출 (High-Risk Path Analysis): 임계치 위반(`threshold_violation == True`)이 발생한 턴들의 궤적을 추출하여 
-        취약점 분석 리포트의 근거 자료로 활용.
+        """Threshold 위반이 발생한 턴을 고위험 경로 분석용으로 추출한다."""
 
         return self.df[self.df["threshold_violation"] == True].copy()
 
