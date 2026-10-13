@@ -17,7 +17,15 @@ def attackseed_generator():
     문장의 {target} 부분을 targets리스트 안의 값들로 변경하여 attackseed 리스트를 생성합니다.
     """
 
-    targets = ["AGE", "LOC", "OCCP", "EDU", "SEX", "INC"]
+    # 의료 온톨로지 기준 상위 Target QI (세부 노드 예: AGE5_30 는 Target으로 사용하지 않음)
+    targets = [
+        "AGE",     # 사건 당시 나이
+        "SEX",     # 기록상 성별
+        "REGION",  # 기록 주소의 지역
+        "DX",      # 질환 / 진단
+        "PROC",    # 시술 종류
+        "PERIOD",  # 시술 시점
+    ]
 
     # attackseed.txt 읽기
     with open(ATTACK_SEED_FILE, "r", encoding="utf-8") as f:
