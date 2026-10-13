@@ -185,48 +185,14 @@ def _find_safe_generalization(
 
 
 def generalization_chain(qi: QIObservation) -> list[QIObservation]:
-    value = str(qi.value)
+    """노드 계층을 따라 일반화 후보 목록을 반환한다 (구체적 → 추상적 순서)."""
+    from .loader import NODE_REGISTRY  # noqa: PLC0415
 
-    if qi.qi_type == "LOC":
-        return [
-            QIObservation(qi.qi_type, parent, qi.source_turn, qi.confidence, qi.source)
-            for parent in _location_generalizations(value)
-        ]
-
-    if qi.qi_type == "AGE":
-        if value in {"teens"}:
-            return [QIObservation(qi.qi_type, "young", qi.source_turn, qi.confidence, qi.source)]
-        if value in {"20s", "30s", "40s", "50s", "60s"}:
-            return [QIObservation(qi.qi_type, "adult", qi.source_turn, qi.confidence, qi.source)]
-        if value in {"70s", "80s", "90s"}:
-            return [QIObservation(qi.qi_type, "senior", qi.source_turn, qi.confidence, qi.source)]
-
-    if qi.qi_type == "EDU":
-        if value in {"Master's", "PhD", "College Degree"}:
-            return [QIObservation(qi.qi_type, "higher_education", qi.source_turn, qi.confidence, qi.source)]
-        if value in {"HS Diploma", "In College/HS Diploma"}:
-            return [QIObservation(qi.qi_type, "non_advanced_degree", qi.source_turn, qi.confidence, qi.source)]
-
-    if qi.qi_type == "REL":
-        if value in {"married", "engaged", "in a relationship"}:
-            return [QIObservation(qi.qi_type, "partnered", qi.source_turn, qi.confidence, qi.source)]
-        if value in {"single", "divorced", "widowed"}:
-            return [QIObservation(qi.qi_type, "not_partnered", qi.source_turn, qi.confidence, qi.source)]
-
-    return []
-
-
-def _location_generalizations(value: str) -> list[str]:
-    generalizations: list[str] = []
-    parts = [part.strip() for part in value.split(",") if part.strip()]
-    if len(parts) >= 2:
-        generalizations.append(parts[-1])
-
-    deduplicated: list[str] = []
-    seen_values: set[str] = set()
-    for item in generalizations:
-        normalized = item.casefold()
-        if normalized not in seen_values:
-            deduplicated.append(item)
-            seen_values.add(normalized)
-    return deduplicated
+    ancestors: list[QIObservation] = []
+    current_id = NODE_REGISTRY.get(str(qi.value), {}).get("parent_id")
+    while current_id:
+        ancestors.append(
+            QIObservation(qi.qi_type, current_id, qi.source_turn, qi.confidence, qi.source)
+        )
+        current_id = NODE_REGISTRY.get(current_id, {}).get("parent_id")
+    return ancestors
